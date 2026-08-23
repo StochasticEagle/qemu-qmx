@@ -57,9 +57,11 @@ jobs:
         shell: bash
         run: |
           version="${{ steps.version.outputs.version }}"
+          archive="$RUNNER_TEMP/qemu-qmx-${version}-source.tar.gz"
           tar --exclude-vcs --exclude='./build*' \
             --transform="s,^\./,qemu-qmx-${version}/," \
-            -czf "qemu-qmx-${version}-source.tar.gz" .
+            -czf "$archive" .
+          cp "$archive" "qemu-qmx-${version}-source.tar.gz"
           sha256sum "qemu-qmx-${version}-source.tar.gz" > "qemu-qmx-${version}-source.tar.gz.sha256"
 
       - name: Upload source archive
@@ -108,6 +110,9 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
+      - name: Install Git for checkout
+        run: dnf -y install git
+
       - name: Check out source
         uses: actions/checkout@v6
         with:
@@ -154,6 +159,9 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
+      - name: Install Git for checkout
+        run: pacman -Sy --noconfirm git
+
       - name: Check out source
         uses: actions/checkout@v6
         with:
@@ -163,7 +171,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed \
-            git gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
+            gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
           useradd -m builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
 
