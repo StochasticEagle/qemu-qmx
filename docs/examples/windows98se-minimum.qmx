@@ -26,4 +26,4 @@ ata1-master: type=cdrom, path="Windows98_SE.iso", status=inserted
 #qemu: disk-format.ata1-master=raw
 #qemu: readonly.ata1-master=on
 
-#qemu: fw_cfg.name="opt/org.seabios/setup", string="1"
+#qemu: fw_cfg.name="opt/seabios/setup", string="1"
