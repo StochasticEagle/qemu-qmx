@@ -8,10 +8,10 @@ pkgdesc='QEMU x86 system emulator with QMX machine configuration support'
 arch=('x86_64')
 url='https://github.com/StochasticEagle/qemu-qmx'
 license=('GPL-2.0-or-later')
-provides=('qemu-system-x86')
-conflicts=('qemu-system-x86')
-replaces=('qemu-system-x86')
-depends=('glib2' 'pixman' 'zlib' 'libslirp' 'sdl2-compat' 'qemu-common' 'qemu-system-x86-firmware')
+provides=('qemu-system-x86' 'qemu-common' 'qemu-system-x86-firmware')
+conflicts=('qemu-system-x86' 'qemu-common' 'qemu-system-x86-firmware')
+replaces=('qemu-system-x86' 'qemu-common' 'qemu-system-x86-firmware')
+depends=('glib2' 'pixman' 'zlib' 'libslirp' 'sdl2-compat')
 makedepends=('git' 'gcc' 'binutils' 'make' 'meson' 'ninja' 'python' 'pkgconf')
 source=(
   "qemu-qmx::git+https://github.com/StochasticEagle/qemu-qmx.git#tag=qemu-qmx-v${_qmxver}"
@@ -26,9 +26,7 @@ prepare() {
 
 build() {
   cd "$srcdir/qemu-qmx"
-
   make -C roms/seabios
-
   rm -rf build-package
   mkdir build-package
   cd build-package
@@ -57,22 +55,15 @@ check() {
 
 package() {
   cd "$srcdir/qemu-qmx"
+  DESTDIR="$pkgdir" ninja -C build-package install
 
-  install -Dm755 build-package/qemu-system-x86_64 \
-    "$pkgdir/usr/bin/qemu-system-x86_64"
-  install -Dm755 build-package/qemu-system-i386 \
-    "$pkgdir/usr/bin/qemu-system-i386"
-  install -Dm644 roms/seabios/out/bios.bin \
-    "$pkgdir/usr/share/qemu/bios-qmx.bin"
+  # QEMU-QMX owns the normal firmware names; no parallel QMX-only filename.
+  install -Dm644 roms/seabios/out/bios.bin "$pkgdir/usr/share/qemu/bios.bin"
+  install -Dm644 roms/seabios/out/bios.bin "$pkgdir/usr/share/qemu/bios-256k.bin"
 
-  install -Dm644 QMX_VERSION \
-    "$pkgdir/usr/share/doc/qemu-qmx/QMX_VERSION"
-  install -Dm644 docs/QMX_Format_Specification_v0.2.md \
-    "$pkgdir/usr/share/doc/qemu-qmx/QMX_Format_Specification_v0.2.md"
-  install -Dm644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md \
-    "$pkgdir/usr/share/doc/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md"
-  install -Dm644 docs/releases/QMX_0.9.0-beta.1.md \
-    "$pkgdir/usr/share/doc/qemu-qmx/QMX_0.9.0-beta.1.md"
-  install -Dm644 COPYING \
-    "$pkgdir/usr/share/licenses/qemu-qmx/COPYING"
+  install -Dm644 QMX_VERSION "$pkgdir/usr/share/doc/qemu-qmx/QMX_VERSION"
+  install -Dm644 docs/QMX_Format_Specification_v0.2.md "$pkgdir/usr/share/doc/qemu-qmx/QMX_Format_Specification_v0.2.md"
+  install -Dm644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md "$pkgdir/usr/share/doc/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md"
+  install -Dm644 docs/releases/QMX_0.9.0-beta.1.md "$pkgdir/usr/share/doc/qemu-qmx/QMX_0.9.0-beta.1.md"
+  install -Dm644 COPYING "$pkgdir/usr/share/licenses/qemu-qmx/COPYING"
 }
