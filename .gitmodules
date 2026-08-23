@@ -1,6 +1,6 @@
 [submodule "roms/seabios"]
 	path = roms/seabios
-	url = https://gitlab.com/qemu-project/seabios.git/
+	url = https://github.com/StochasticEagle/seabios-setupmenu.git
 [submodule "roms/SLOF"]
 	path = roms/SLOF
 	url = https://gitlab.com/qemu-project/SLOF.git
