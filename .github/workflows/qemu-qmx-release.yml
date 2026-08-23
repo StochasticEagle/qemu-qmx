@@ -17,8 +17,10 @@ jobs:
   source:
     name: Source archive
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Check out source
+      - name: Check out source once
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -57,12 +59,19 @@ jobs:
 
   debian:
     name: Debian / apt
+    needs: source
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
-        uses: actions/checkout@v6
+      - name: Download prepared source
+        uses: actions/download-artifact@v7
         with:
-          submodules: recursive
+          name: qemu-qmx-source
+          path: prepared-source
+
+      - name: Extract prepared source
+        shell: bash
+        run: |
+          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
 
       - name: Install build dependencies
         run: |
@@ -89,16 +98,20 @@ jobs:
 
   rpm:
     name: Fedora / dnf
+    needs: source
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
-      - name: Install Git for checkout
-        run: dnf -y install git
-
-      - name: Check out source
-        uses: actions/checkout@v6
+      - name: Download prepared source
+        uses: actions/download-artifact@v7
         with:
-          submodules: recursive
+          name: qemu-qmx-source
+          path: prepared-source
+
+      - name: Extract prepared source
+        shell: bash
+        run: |
+          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
 
       - name: Install build dependencies
         run: |
@@ -109,11 +122,11 @@ jobs:
       - name: Prepare RPM source archives
         shell: bash
         run: |
-          version="$(cat QMX_VERSION)"
+          version="${{ needs.source.outputs.version }}"
           tag="qemu-qmx-v${version}"
           mkdir -p "$PWD/rpmbuild/SOURCES" "$PWD/artifacts/rpm"
           source_archive="$RUNNER_TEMP/${tag}.tar.gz"
-          tar --exclude-vcs --exclude='./build*' \
+          tar --exclude-vcs --exclude='./build*' --exclude='./prepared-source' --exclude='./rpmbuild' --exclude='./artifacts' \
             --transform="s,^\./,qemu-qmx-${tag}/," \
             -czf "$source_archive" .
           cp "$source_archive" "$PWD/rpmbuild/SOURCES/${tag}.tar.gz"
@@ -140,16 +153,20 @@ jobs:
 
   arch:
     name: Arch / pacman
+    needs: source
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
-      - name: Install Git for checkout
-        run: pacman -Sy --noconfirm git
-
-      - name: Check out source
-        uses: actions/checkout@v6
+      - name: Download prepared source
+        uses: actions/download-artifact@v7
         with:
-          submodules: recursive
+          name: qemu-qmx-source
+          path: prepared-source
+
+      - name: Extract prepared source
+        shell: bash
+        run: |
+          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
 
       - name: Install build dependencies
         run: |
@@ -159,13 +176,12 @@ jobs:
           useradd -m builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
 
-      - name: Build Arch package from current checkout
+      - name: Build Arch package from prepared source
         shell: bash
         run: |
-          version="$(cat QMX_VERSION)"
           work="$GITHUB_WORKSPACE/artifacts/arch-work"
           mkdir -p "$work/src/qemu-qmx" "$work/src/seabios-qmx" "$GITHUB_WORKSPACE/artifacts/arch"
-          cp -a . "$work/src/qemu-qmx/"
+          tar --exclude='./prepared-source' --exclude='./artifacts' -cf - . | tar -C "$work/src/qemu-qmx" -xf -
           rm -rf "$work/src/qemu-qmx/roms/seabios"
           cp -a roms/seabios/. "$work/src/seabios-qmx/"
           cp packaging/arch/PKGBUILD "$work/PKGBUILD"
@@ -194,14 +210,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Check out source
-        uses: actions/checkout@v6
-
       - name: Download release artifacts
         uses: actions/download-artifact@v7
         with:
           path: release
           merge-multiple: true
+
+      - name: Extract release metadata from prepared source
+        shell: bash
+        run: |
+          mkdir release-source
+          tar -xzf "release/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" \
+            --strip-components=1 -C release-source
 
       - name: Create consolidated SHA-256 checksums
         shell: bash
@@ -221,12 +241,12 @@ jobs:
         run: |
           version="$REQUESTED_VERSION"
           test -n "$version"
-          test "$version" = "$(cat QMX_VERSION)"
+          test "$version" = "$(cat release-source/QMX_VERSION)"
           tag="qemu-qmx-v${version}"
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             release/* \
-            --notes-file docs/releases/QMX_${version}.md \
+            --notes-file "release-source/docs/releases/QMX_${version}.md" \
             --prerelease \
             --title "QEMU-QMX ${version} beta" \
             --target "$GITHUB_SHA"
