@@ -26,7 +26,7 @@ Depends:
  qemu-system-common,
  qemu-system-data,
  seabios
-Provides: qemu-system-x86
+Provides: qemu-system-x86 (= ${binary:Version})
 Conflicts: qemu-system-x86
 Replaces: qemu-system-x86
 Description: QEMU x86 system emulator with QMX configuration support
