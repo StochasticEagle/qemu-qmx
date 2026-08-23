@@ -47,12 +47,6 @@ struct MC146818RtcState {
     LostTickPolicy lost_tick_policy;
     Notifier suspend_notifier;
     QLIST_ENTRY(MC146818RtcState) link;
-
-    /* Optional QMX cmos128 persistent backing. */
-    char *qmx_cmos_file;
-    char *qmx_rtc_init;
-    bool qmx_cmos_ready;
-    Notifier qmx_shutdown_notifier;
 };
 
 #define RTC_ISA_IRQ 8
@@ -61,7 +55,6 @@ MC146818RtcState *mc146818_rtc_init(ISABus *bus, int base_year,
                                     qemu_irq intercept_irq);
 void mc146818rtc_set_cmos_data(MC146818RtcState *s, int addr, int val);
 int mc146818rtc_get_cmos_data(MC146818RtcState *s, int addr);
-void mc146818rtc_qmx_load_persistent(MC146818RtcState *s);
 void rtc_reset_reinjection(MC146818RtcState *rtc);
 
 #endif /* HW_RTC_MC146818RTC_H */
