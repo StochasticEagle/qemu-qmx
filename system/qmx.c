@@ -17,6 +17,7 @@ static GHashTable *qmx_device_drives;
 static GHashTable *qmx_failed_drives;
 static char *qmx_nvram_file;
 static char *qmx_nvram_rtc_init;
+static bool qmx_check_mode;
 static QmxNvramBackendInit qmx_nvram_backend;
 
 static void qmx_runtime_reset(void)
@@ -33,6 +34,11 @@ static void qmx_runtime_reset(void)
                                               g_free, g_free);
     qmx_failed_drives = g_hash_table_new_full(g_str_hash, g_str_equal,
                                               g_free, NULL);
+}
+
+bool qmx_check_requested(void)
+{
+    return qmx_check_mode;
 }
 
 void qmx_register_nvram_backend(QmxNvramBackendInit initfn)
@@ -243,7 +249,6 @@ static char *qmx_escape_qemu_value(const char *value)
     GString *out = g_string_new(NULL);
     const char *p;
 
-    /* QemuOpts uses doubled commas for a literal comma in a value. */
     for (p = value; *p; p++) {
         if (*p == ',') {
             g_string_append_c(out, ',');
@@ -274,18 +279,10 @@ static char *qmx_build_properties(const char *value, const char *id,
     bool have_bare = false;
     guint i;
 
-    if (file_out) {
-        *file_out = NULL;
-    }
-    if (drive_out) {
-        *drive_out = NULL;
-    }
-    if (name_out) {
-        *name_out = NULL;
-    }
-    if (!fields) {
-        return NULL;
-    }
+    if (file_out) *file_out = NULL;
+    if (drive_out) *drive_out = NULL;
+    if (name_out) *name_out = NULL;
+    if (!fields) return NULL;
 
     seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     out = g_string_new(NULL);
@@ -295,9 +292,7 @@ static char *qmx_build_properties(const char *value, const char *id,
         g_autofree char *decoded = NULL;
         g_autofree char *escaped = NULL;
 
-        if (i) {
-            g_string_append_c(out, ',');
-        }
+        if (i) g_string_append_c(out, ',');
         if (!eq) {
             if (have_bare || i != 0) {
                 error_setg(errp, "property '%s' is missing '='", field);
@@ -305,9 +300,7 @@ static char *qmx_build_properties(const char *value, const char *id,
             }
             have_bare = true;
             decoded = qmx_unquote(field, errp);
-            if (!decoded) {
-                goto fail;
-            }
+            if (!decoded) goto fail;
             escaped = qmx_escape_qemu_value(decoded);
             g_string_append(out, escaped);
             continue;
@@ -331,9 +324,7 @@ static char *qmx_build_properties(const char *value, const char *id,
         g_hash_table_add(seen, g_strdup(field));
 
         decoded = qmx_unquote(eq + 1, errp);
-        if (!decoded) {
-            goto fail;
-        }
+        if (!decoded) goto fail;
         if (!strcmp(field, "id")) {
             have_id = true;
             if (id && strcmp(decoded, id)) {
@@ -347,39 +338,25 @@ static char *qmx_build_properties(const char *value, const char *id,
             g_autofree char *resolved = qmx_resolve_path(qmx_dir, decoded);
             g_free(g_steal_pointer(&decoded));
             decoded = g_strdup(resolved);
-            if (file_out) {
-                *file_out = g_strdup(decoded);
-            }
+            if (file_out) *file_out = g_strdup(decoded);
         }
-        if (drive_out && !strcmp(field, "drive")) {
-            *drive_out = g_strdup(decoded);
-        }
-        if (name_out && !strcmp(field, "name")) {
-            *name_out = g_strdup(decoded);
-        }
+        if (drive_out && !strcmp(field, "drive")) *drive_out = g_strdup(decoded);
+        if (name_out && !strcmp(field, "name")) *name_out = g_strdup(decoded);
         escaped = qmx_escape_qemu_value(decoded);
         g_string_append_printf(out, "%s=%s", field, escaped);
     }
 
     if (inject_id && !have_id) {
         g_autofree char *escaped_id = qmx_escape_qemu_value(id);
-        if (out->len) {
-            g_string_append_c(out, ',');
-        }
+        if (out->len) g_string_append_c(out, ',');
         g_string_append_printf(out, "id=%s", escaped_id);
     }
     return g_string_free(out, false);
 
 fail:
-    if (file_out) {
-        g_clear_pointer(file_out, g_free);
-    }
-    if (drive_out) {
-        g_clear_pointer(drive_out, g_free);
-    }
-    if (name_out) {
-        g_clear_pointer(name_out, g_free);
-    }
+    if (file_out) g_clear_pointer(file_out, g_free);
+    if (drive_out) g_clear_pointer(drive_out, g_free);
+    if (name_out) g_clear_pointer(name_out, g_free);
     g_string_free(out, true);
     return NULL;
 }
@@ -400,12 +377,9 @@ static char *qmx_cli_get_id(const char *value)
 {
     g_auto(GStrv) fields = g_strsplit(value, ",", -1);
     int i;
-
     for (i = 0; fields[i]; i++) {
         char *field = g_strstrip(fields[i]);
-        if (g_str_has_prefix(field, "id=") && field[3]) {
-            return g_strdup(field + 3);
-        }
+        if (g_str_has_prefix(field, "id=") && field[3]) return g_strdup(field + 3);
     }
     return NULL;
 }
@@ -414,12 +388,9 @@ static char *qmx_cli_get_name(const char *value)
 {
     g_auto(GStrv) fields = g_strsplit(value, ",", -1);
     int i;
-
     for (i = 0; fields[i]; i++) {
         char *field = g_strstrip(fields[i]);
-        if (g_str_has_prefix(field, "name=") && field[5]) {
-            return g_strdup(field + 5);
-        }
+        if (g_str_has_prefix(field, "name=") && field[5]) return g_strdup(field + 5);
     }
     return NULL;
 }
@@ -427,6 +398,37 @@ static char *qmx_cli_get_name(const char *value)
 static void qmx_add_override(GHashTable *overrides, const char *key)
 {
     g_hash_table_add(overrides, g_strdup(key));
+}
+
+static bool qmx_scalar_cli_option(const char *opt, const char **key,
+                                  bool *takes_arg)
+{
+    *key = NULL;
+    *takes_arg = true;
+    if (!strcmp(opt, "name")) *key = "name";
+    else if (!strcmp(opt, "machine") || !strcmp(opt, "M")) *key = "machine";
+    else if (!strcmp(opt, "m")) *key = "memory";
+    else if (!strcmp(opt, "accel") || !strcmp(opt, "enable-kvm")) *key = "accel";
+    else if (!strcmp(opt, "cpu")) *key = "cpu";
+    else if (!strcmp(opt, "display") || !strcmp(opt, "nographic")) *key = "display";
+    else if (!strcmp(opt, "vga")) *key = "vga";
+    else if (!strcmp(opt, "bios")) *key = "bios";
+    else if (!strcmp(opt, "boot")) *key = "boot";
+    else if (!strcmp(opt, "serial")) *key = "serial";
+    else if (!strcmp(opt, "parallel")) *key = "parallel";
+    else if (!strcmp(opt, "monitor")) *key = "monitor";
+    else if (!strcmp(opt, "smp")) *key = "smp";
+    else if (!strcmp(opt, "rtc")) *key = "rtc";
+    else if (!strcmp(opt, "usb")) { *key = "usb"; *takes_arg = false; }
+    return *key != NULL;
+}
+
+static bool qmx_object_cli_option(const char *opt)
+{
+    return !strcmp(opt, "drive") || !strcmp(opt, "device") ||
+           !strcmp(opt, "audiodev") || !strcmp(opt, "netdev") ||
+           !strcmp(opt, "chardev") || !strcmp(opt, "object") ||
+           !strcmp(opt, "fw_cfg");
 }
 
 static GHashTable *qmx_collect_cli_overrides(int argc, char **argv,
@@ -441,74 +443,36 @@ static GHashTable *qmx_collect_cli_overrides(int argc, char **argv,
         const char *opt = argv[i];
         const char *arg = NULL;
         const char *key = NULL;
+        bool takes_arg = false;
 
         if (i == qmx_index) {
-            if (explicit_qmx) {
-                i++;
-            }
+            i++;
             continue;
         }
-        if (opt[0] != '-') {
-            continue;
-        }
-        while (*opt == '-') {
-            opt++;
-        }
+        if (opt[0] != '-') continue;
+        while (*opt == '-') opt++;
 
-        if (!strcmp(opt, "name")) {
-            key = "name";
-        } else if (!strcmp(opt, "machine") || !strcmp(opt, "M")) {
-            key = "machine";
-        } else if (!strcmp(opt, "m")) {
-            key = "memory";
-        } else if (!strcmp(opt, "accel") || !strcmp(opt, "enable-kvm")) {
-            key = "accel";
-        } else if (!strcmp(opt, "cpu")) {
-            key = "cpu";
-        } else if (!strcmp(opt, "display") || !strcmp(opt, "nographic")) {
-            key = "display";
-        } else if (!strcmp(opt, "vga")) {
-            key = "vga";
-        } else if (!strcmp(opt, "bios")) {
-            key = "bios";
-        } else if (!strcmp(opt, "boot")) {
-            key = "boot";
-        }
-        if (key) {
+        if (qmx_scalar_cli_option(opt, &key, &takes_arg)) {
             qmx_add_override(overrides, key);
+            if (takes_arg && i + 1 < argc) i++;
+            continue;
         }
 
-        if (!strcmp(opt, "drive") || !strcmp(opt, "device") ||
-            !strcmp(opt, "audiodev") || !strcmp(opt, "fw_cfg")) {
-            if (i + 1 >= argc) {
-                continue;
-            }
+        if (qmx_object_cli_option(opt)) {
+            if (i + 1 >= argc) continue;
             arg = argv[++i];
             if (!strcmp(opt, "fw_cfg")) {
                 g_autofree char *name = qmx_cli_get_name(arg);
                 if (name) {
-                    g_autofree char *override =
-                        g_strdup_printf("@fw_cfg:%s", name);
+                    g_autofree char *override = g_strdup_printf("@fw_cfg:%s", name);
                     qmx_add_override(overrides, override);
                 }
             } else {
                 g_autofree char *id = qmx_cli_get_id(arg);
                 if (id) {
-                    g_autofree char *override =
-                        g_strdup_printf("%s.%s", opt, id);
+                    g_autofree char *override = g_strdup_printf("%s.%s", opt, id);
                     qmx_add_override(overrides, override);
                 }
-            }
-            continue;
-        }
-
-        if (!strcmp(opt, "name") || !strcmp(opt, "machine") ||
-            !strcmp(opt, "M") || !strcmp(opt, "m") ||
-            !strcmp(opt, "accel") || !strcmp(opt, "cpu") ||
-            !strcmp(opt, "display") || !strcmp(opt, "vga") ||
-            !strcmp(opt, "bios") || !strcmp(opt, "boot")) {
-            if (i + 1 < argc) {
-                i++;
             }
         }
     }
@@ -525,9 +489,7 @@ static bool qmx_translate_nvram(const char *value, const char *qmx_dir,
     g_autofree char *rtc_init = NULL;
     guint i;
 
-    if (!fields) {
-        return false;
-    }
+    if (!fields) return false;
     seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
     for (i = 0; i < fields->len; i++) {
@@ -552,9 +514,7 @@ static bool qmx_translate_nvram(const char *value, const char *qmx_dir,
         }
         g_hash_table_add(seen, g_strdup(field));
         decoded = qmx_unquote(eq + 1, errp);
-        if (!decoded) {
-            return false;
-        }
+        if (!decoded) return false;
 
         if (!strcmp(field, "file")) {
             if (!decoded[0]) {
@@ -580,9 +540,7 @@ static bool qmx_translate_nvram(const char *value, const char *qmx_dir,
         error_setg(errp, "nvram format must be 'cmos128'");
         return false;
     }
-    if (!rtc_init) {
-        rtc_init = g_strdup("time0");
-    }
+    if (!rtc_init) rtc_init = g_strdup("time0");
     if (strcmp(rtc_init, "time0") && strcmp(rtc_init, "image")) {
         error_setg(errp, "nvram rtc_init must be 'time0' or 'image'");
         return false;
@@ -614,9 +572,7 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
 
     if (!strcmp(family, "qmx") && !id) {
         scalar = qmx_unquote(value, errp);
-        if (!scalar) {
-            return false;
-        }
+        if (!scalar) return false;
         if (strcmp(scalar, "1")) {
             error_setg(errp, "unsupported QMX major version '%s'", scalar);
             return false;
@@ -631,10 +587,11 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
 
     if (!id) {
         scalar = qmx_unquote(value, errp);
-        if (!scalar) {
-            return false;
-        }
-        if (!strcmp(family, "name")) {
+        if (!scalar) return false;
+
+        if (!strcmp(family, "description")) {
+            return true;
+        } else if (!strcmp(family, "name")) {
             if (!overridden) qmx_add_option(args, "-name", scalar);
         } else if (!strcmp(family, "machine")) {
             if (!overridden) qmx_add_option(args, "-machine", scalar);
@@ -655,6 +612,22 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
             }
         } else if (!strcmp(family, "boot")) {
             if (!overridden) qmx_add_option(args, "-boot", scalar);
+        } else if (!strcmp(family, "serial")) {
+            if (!overridden) qmx_add_option(args, "-serial", scalar);
+        } else if (!strcmp(family, "parallel")) {
+            if (!overridden) qmx_add_option(args, "-parallel", scalar);
+        } else if (!strcmp(family, "monitor")) {
+            if (!overridden) qmx_add_option(args, "-monitor", scalar);
+        } else if (!strcmp(family, "smp")) {
+            if (!overridden) qmx_add_option(args, "-smp", scalar);
+        } else if (!strcmp(family, "rtc")) {
+            if (!overridden) qmx_add_option(args, "-rtc", scalar);
+        } else if (!strcmp(family, "usb")) {
+            if (strcmp(scalar, "on") && strcmp(scalar, "off")) {
+                error_setg(errp, "usb must be 'on' or 'off'");
+                return false;
+            }
+            if (!overridden && !strcmp(scalar, "on")) qmx_add_arg(args, "-usb");
         } else {
             error_setg(errp, "unsupported QMX directive '%s'", key);
             return false;
@@ -667,12 +640,14 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
         return false;
     }
 
-    if (!strcmp(family, "audiodev")) {
+    if (!strcmp(family, "audiodev") || !strcmp(family, "netdev") ||
+        !strcmp(family, "chardev") || !strcmp(family, "object")) {
+        const char *option = !strcmp(family, "audiodev") ? "-audiodev" :
+                             !strcmp(family, "netdev") ? "-netdev" :
+                             !strcmp(family, "chardev") ? "-chardev" : "-object";
         props = qmx_build_properties(value, id, true, false, qmx_dir,
                                      NULL, NULL, NULL, errp);
-        if (props && !overridden) {
-            qmx_add_option(args, "-audiodev", props);
-        }
+        if (props && !overridden) qmx_add_option(args, option, props);
     } else if (!strcmp(family, "device")) {
         props = qmx_build_properties(value, id, true, false, qmx_dir,
                                      NULL, &drive, NULL, errp);
@@ -699,13 +674,10 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
         if (props) {
             bool name_overridden = false;
             if (name) {
-                g_autofree char *override =
-                    g_strdup_printf("@fw_cfg:%s", name);
+                g_autofree char *override = g_strdup_printf("@fw_cfg:%s", name);
                 name_overridden = g_hash_table_contains(overrides, override);
             }
-            if (!overridden && !name_overridden) {
-                qmx_add_option(args, "-fw_cfg", props);
-            }
+            if (!overridden && !name_overridden) qmx_add_option(args, "-fw_cfg", props);
         }
     } else {
         error_setg(errp, "unsupported QMX object family '%s'", family);
@@ -730,8 +702,7 @@ static GPtrArray *qmx_parse_file(const char *filename, GHashTable *overrides,
     int i;
 
     if (!g_file_get_contents(absolute, &contents, &len, &gerr)) {
-        error_setg(errp, "cannot open QMX file '%s': %s",
-                   absolute, gerr->message);
+        error_setg(errp, "cannot open QMX file '%s': %s", absolute, gerr->message);
         return NULL;
     }
 
@@ -745,14 +716,10 @@ static GPtrArray *qmx_parse_file(const char *filename, GHashTable *overrides,
         char *key;
         char *value;
 
-        if (!line[0] || line[0] == '#') {
-            continue;
-        }
-
+        if (!line[0] || line[0] == '#') continue;
         eq = strchr(line, '=');
         if (!eq) {
-            error_setg(errp, "%s:%d: missing '='; expected 'key = value'",
-                       absolute, i + 1);
+            error_setg(errp, "%s:%d: missing '='; expected 'key = value'", absolute, i + 1);
             goto fail;
         }
         *eq = '\0';
@@ -760,18 +727,15 @@ static GPtrArray *qmx_parse_file(const char *filename, GHashTable *overrides,
         value = g_strstrip(eq + 1);
 
         if (!qmx_is_key(key)) {
-            error_setg(errp, "%s:%d: invalid QMX key '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: invalid QMX key '%s'", absolute, i + 1, key);
             goto fail;
         }
         if (!value[0]) {
-            error_setg(errp, "%s:%d: empty value for '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: empty value for '%s'", absolute, i + 1, key);
             goto fail;
         }
         if (g_hash_table_contains(seen, key)) {
-            error_setg(errp, "%s:%d: duplicate QMX assignment '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: duplicate QMX assignment '%s'", absolute, i + 1, key);
             goto fail;
         }
         g_hash_table_add(seen, g_strdup(key));
@@ -812,49 +776,44 @@ bool qmx_expand_argv(int *argc, char ***argv, Error **errp)
     int i;
     guint j;
 
+    qmx_check_mode = false;
     for (i = 1; i < *argc; i++) {
-        if (!strcmp(oldv[i], "-qmx")) {
+        if (!strcmp(oldv[i], "-qmx") || !strcmp(oldv[i], "-qmx-check")) {
+            bool check = !strcmp(oldv[i], "-qmx-check");
             if (i + 1 >= *argc) {
-                error_setg(errp, "-qmx requires a QMX filename");
+                error_setg(errp, "%s requires a QMX filename", oldv[i]);
                 return false;
             }
             qmx_file = oldv[i + 1];
             qmx_index = i;
             qmx_count++;
             explicit_qmx = true;
+            qmx_check_mode = check;
             i++;
         }
     }
 
-    if (!explicit_qmx && *argc == 2 && oldv[1][0] != '-' &&
-        qmx_has_suffix(oldv[1])) {
+    if (!explicit_qmx && *argc == 2 && oldv[1][0] != '-' && qmx_has_suffix(oldv[1])) {
         qmx_file = oldv[1];
         qmx_index = 1;
         qmx_count = 1;
     }
 
-    if (!qmx_count) {
-        return true;
-    }
+    if (!qmx_count) return true;
     if (qmx_count != 1) {
         error_setg(errp, "exactly one QMX file may be specified");
         return false;
     }
 
     qmx_runtime_reset();
-    overrides = qmx_collect_cli_overrides(*argc, oldv, qmx_index,
-                                          explicit_qmx);
+    overrides = qmx_collect_cli_overrides(*argc, oldv, qmx_index, explicit_qmx);
     qmx_args = qmx_parse_file(qmx_file, overrides, errp);
-    if (!qmx_args) {
-        return false;
+    if (!qmx_args) return false;
+
+    if (qmx_check_mode) {
+        return true;
     }
 
-    /*
-     * QMX supplies the base configuration.  Original command-line arguments
-     * are deliberately appended afterwards so normal QEMU CLI semantics win.
-     * Same-id QMX objects are suppressed above to avoid duplicate-object
-     * errors while preserving unrelated QMX objects.
-     */
     newv = g_ptr_array_new();
     qmx_add_arg(newv, oldv[0]);
     for (j = 0; j < qmx_args->len; j++) {
@@ -862,9 +821,7 @@ bool qmx_expand_argv(int *argc, char ***argv, Error **errp)
     }
     for (i = 1; i < *argc; i++) {
         if (i == qmx_index) {
-            if (explicit_qmx) {
-                i++;
-            }
+            i++;
             continue;
         }
         qmx_add_arg(newv, oldv[i]);
