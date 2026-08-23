@@ -130,20 +130,22 @@ static void qmx_cmos_set_current_time(MC146818RtcState *s)
 
 static bool qmx_cmos_changed(QmxCmosState *state)
 {
-    static const uint8_t volatile_regs[] = {
+    static const uint8_t time_regs[] = {
         RTC_SECONDS, RTC_MINUTES, RTC_HOURS, RTC_DAY_OF_WEEK,
-        RTC_DAY_OF_MONTH, RTC_MONTH, RTC_YEAR, RTC_CENTURY, RTC_REG_C,
+        RTC_DAY_OF_MONTH, RTC_MONTH, RTC_YEAR, RTC_CENTURY,
     };
     uint8_t current[QMX_CMOS_SIZE];
     size_t i;
 
-    if (state->rtc_from_image) {
-        return memcmp(state->last, state->rtc->cmos_data, QMX_CMOS_SIZE) != 0;
-    }
-
     memcpy(current, state->rtc->cmos_data, QMX_CMOS_SIZE);
-    for (i = 0; i < ARRAY_SIZE(volatile_regs); i++) {
-        current[volatile_regs[i]] = state->last[volatile_regs[i]];
+
+    /* Register C is interrupt state, not persistent configuration. */
+    current[RTC_REG_C] = state->last[RTC_REG_C];
+
+    if (!state->rtc_from_image) {
+        for (i = 0; i < ARRAY_SIZE(time_regs); i++) {
+            current[time_regs[i]] = state->last[time_regs[i]];
+        }
     }
     return memcmp(state->last, current, QMX_CMOS_SIZE) != 0;
 }
@@ -178,8 +180,8 @@ static void qmx_cmos_flush_timer(void *opaque)
     qmx_cmos_write(state, false);
     if (state->active) {
         timer_mod(state->flush_timer,
-                  qemu_clock_get_ns(QEMU_CLOCK_REALTIME) /
-                  NANOSECONDS_PER_MILLISECOND + QMX_CMOS_FLUSH_INTERVAL_MS);
+                  qemu_clock_get_ms(QEMU_CLOCK_REALTIME) +
+                  QMX_CMOS_FLUSH_INTERVAL_MS);
     }
 }
 
@@ -187,6 +189,7 @@ static void qmx_cmos_exit(Notifier *notifier, void *opaque)
 {
     QmxCmosState *state = container_of(notifier, QmxCmosState, exit_notifier);
 
+    (void)opaque;
     qmx_cmos_write(state, true);
 }
 
@@ -238,14 +241,15 @@ static bool qmx_cmos_init(const char *file, const char *rtc_init, Error **errp)
     memcpy(rtc->cmos_data, contents, QMX_CMOS_SIZE);
     if (!strcmp(rtc_init, "time0")) {
         qmx_cmos_set_current_time(rtc);
-        /* Register C is interrupt state, not persistent configuration. */
-        rtc->cmos_data[RTC_REG_C] = current[RTC_REG_C];
     } else if (!qmx_cmos_set_image_time(rtc)) {
         memcpy(rtc->cmos_data, current, QMX_CMOS_SIZE);
         warn_report("QMX nvram: '%s' contains an invalid RTC date/time; using volatile CMOS",
                     file);
         return true;
     }
+
+    /* Register C is interrupt state, not persistent configuration. */
+    rtc->cmos_data[RTC_REG_C] = current[RTC_REG_C];
 
     if (qmx_cmos.active) {
         timer_free(qmx_cmos.flush_timer);
@@ -265,8 +269,8 @@ static bool qmx_cmos_init(const char *file, const char *rtc_init, Error **errp)
     qmx_cmos.flush_timer = timer_new_ms(QEMU_CLOCK_REALTIME,
                                         qmx_cmos_flush_timer, &qmx_cmos);
     timer_mod(qmx_cmos.flush_timer,
-              qemu_clock_get_ns(QEMU_CLOCK_REALTIME) /
-              NANOSECONDS_PER_MILLISECOND + QMX_CMOS_FLUSH_INTERVAL_MS);
+              qemu_clock_get_ms(QEMU_CLOCK_REALTIME) +
+              QMX_CMOS_FLUSH_INTERVAL_MS);
     return true;
 }
 
