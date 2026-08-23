@@ -27,6 +27,7 @@
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "qemu/module.h"
+#include "qemu/qmx.h"
 #include "qemu/target-info.h"
 #include "qemu/target-info-qom.h"
 #include "exec/cpu-common.h"
@@ -328,7 +329,7 @@ static QemuOptsList qemu_add_fd_opts = {
         },{
             .name = "opaque",
             .type = QEMU_OPT_STRING,
-            .help = "free-form string used to describe fd",
+            .help = "free-form string used to describe fd set",
         },
         { /* end of list */ }
     },
@@ -659,8 +660,27 @@ static int cleanup_add_fd(void *opaque, QemuOpts *opts, Error **errp)
 static int drive_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     BlockInterfaceType *block_default_type = opaque;
+    Error *local_err = NULL;
+    DriveInfo *dinfo;
+    const char *id = qemu_opts_id(opts);
+    const char *path = qmx_drive_path(id);
 
-    return drive_new(opts, *block_default_type, errp) == NULL;
+    dinfo = drive_new(opts, *block_default_type, &local_err);
+    if (dinfo) {
+        return 0;
+    }
+
+    if (path && local_err && strstr(error_get_pretty(local_err), path)) {
+        warn_report("QMX drive.%s: cannot open '%s': %s; "
+                    "referenced device(s) will not be created",
+                    id, path, error_get_pretty(local_err));
+        qmx_mark_drive_failed(id);
+        error_free(local_err);
+        return 0;
+    }
+
+    error_propagate(errp, local_err);
+    return -1;
 }
 
 static int drive_enable_snapshot(void *opaque, QemuOpts *opts, Error **errp)
@@ -1213,6 +1233,14 @@ static int device_help_func(void *opaque, QemuOpts *opts, Error **errp)
 static int device_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     DeviceState *dev;
+    const char *id = qemu_opts_id(opts);
+    const char *drive_id = NULL;
+
+    if (qmx_should_skip_device(id, &drive_id)) {
+        warn_report("QMX device.%s: drive.%s is unavailable; device not created",
+                    id, drive_id);
+        return 0;
+    }
 
     dev = qdev_device_add(opts, errp);
     if (!dev && *errp) {
@@ -1544,12 +1572,12 @@ static gint machine_class_cmp(gconstpointer a, gconstpointer b, gpointer d)
                           object_class_get_name(OBJECT_CLASS(mc2)));
         }
 
-        /* Standalone machine types sort after families. */
+        /* Standalone machines sort after families. */
         return 1;
     }
 
     if (mc2->family == NULL) {
-        /* Families sort before standalone machine types. */
+        /* Families sort before standalone machines. */
         return -1;
     }
 
