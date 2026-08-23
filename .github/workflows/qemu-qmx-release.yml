@@ -10,12 +10,9 @@ on:
 permissions:
   contents: write
 
-env:
-  SEABIOS_COMMIT: e0b009af38836aa5d1d55713d470721835f03664
-
 jobs:
   release:
-    name: Build and publish release
+    name: Build once, package, and publish
     runs-on: ubuntu-latest
 
     steps:
@@ -28,15 +25,15 @@ jobs:
       - name: Validate release version
         shell: bash
         env:
-          REQUESTED_VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
-          test -n "$REQUESTED_VERSION"
-          test "$REQUESTED_VERSION" = "$(cat QMX_VERSION)"
+          test -n "$VERSION"
+          test "$VERSION" = "$(cat QMX_VERSION)"
 
       - name: Prepare artifact directories
         shell: bash
         run: |
-          rm -rf artifacts
+          rm -rf artifacts build-release stage-release
           mkdir -p artifacts/source artifacts/debian artifacts/rpm artifacts/arch
 
       - name: Build self-contained source archive
@@ -49,92 +46,212 @@ jobs:
             --exclude-vcs \
             --exclude='./build*' \
             --exclude='./artifacts' \
+            --exclude='./stage-release' \
             --transform="s,^\./,qemu-qmx-${VERSION}/," \
             -czf "$archive" .
           cp "$archive" "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz"
           sha256sum "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz" \
             > "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz.sha256"
 
-      - name: Build Debian package
+      - name: Install build dependencies
         shell: bash
         run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential binutils make meson ninja-build pkg-config python3 \
+            libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
+
+      - name: Build QEMU-QMX and SeaBIOS once
+        shell: bash
+        run: |
+          make -C roms/seabios
+          mkdir build-release
+          cd build-release
+          ../configure \
+            --prefix=/usr \
+            --libdir=/usr/lib \
+            --target-list=i386-softmmu,x86_64-softmmu \
+            --without-default-features \
+            --enable-system \
+            --enable-kvm \
+            --enable-tcg \
+            --enable-sdl \
+            --enable-slirp \
+            --audio-drv-list=sdl \
+            --disable-docs \
+            --disable-tools \
+            --disable-guest-agent
+          ninja
+
+      - name: Test the single build
+        shell: bash
+        run: |
+          python3 tests/qmx/test-qmx-parser.py build-release/qemu-system-x86_64
+          python3 tests/qmx/test-qmx-integration.py build-release/qemu-system-x86_64
+
+      - name: Stage canonical release payload
+        shell: bash
+        run: |
+          DESTDIR="$GITHUB_WORKSPACE/stage-release" ninja -C build-release install
+          install -Dm0644 roms/seabios/out/bios.bin \
+            stage-release/usr/share/qemu/bios.bin
+          install -Dm0644 roms/seabios/out/bios.bin \
+            stage-release/usr/share/qemu/bios-256k.bin
+          install -Dm0644 QMX_VERSION \
+            stage-release/usr/share/doc/qemu-qmx/QMX_VERSION
+          install -Dm0644 docs/QMX_Format_Specification_v0.2.md \
+            stage-release/usr/share/doc/qemu-qmx/QMX_Format_Specification_v0.2.md
+          install -Dm0644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md \
+            stage-release/usr/share/doc/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
+          install -Dm0644 "docs/releases/QMX_${{ inputs.version }}.md" \
+            "stage-release/usr/share/doc/qemu-qmx/QMX_${{ inputs.version }}.md"
+          install -Dm0644 COPYING \
+            stage-release/usr/share/licenses/qemu-qmx/COPYING
+
+          test -x stage-release/usr/bin/qemu-system-x86_64
+          test -x stage-release/usr/bin/qemu-system-i386
+          test -f stage-release/usr/share/qemu/bios.bin
+          test -f stage-release/usr/share/qemu/bios-256k.bin
+
+      - name: Package Debian / apt
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
           docker run --rm \
-            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -e VERSION="$VERSION" \
+            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
             -v "$GITHUB_WORKSPACE/artifacts/debian:/out" \
-            ubuntu:latest \
+            debian:trixie \
             bash -euxo pipefail -c '
-              export DEBIAN_FRONTEND=noninteractive
               apt-get update
-              apt-get install -y \
-                build-essential debhelper devscripts dpkg-dev ninja-build meson pkg-config \
-                python3 python3-venv libglib2.0-dev libpixman-1-dev libslirp-dev \
-                libsdl2-dev zlib1g-dev
-              cp -a /source /work
-              cd /work
-              cp -a packaging/debian debian
-              dpkg-buildpackage -b -us -uc
-              cp /qemu-qmx_*.deb /out/
+              apt-get install -y dpkg-dev libc6 libglib2.0-0t64 libpixman-1-0 libslirp0 libsdl2-2.0-0 zlib1g
+
+              mkdir -p /pkg/DEBIAN /tmp/debian
+              cp -a /stage/. /pkg/
+
+              cat > /tmp/debian/control <<EOF
+Source: qemu-qmx
+Section: otherosfs
+Priority: optional
+Maintainer: QEMU-QMX Project <noreply@github.com>
+
+Package: qemu-qmx
+Architecture: amd64
+Description: QEMU x86 system emulator with QMX configuration support
+EOF
+              cd /tmp
+              deps="$(dpkg-shlibdeps -O \
+                -e/pkg/usr/bin/qemu-system-x86_64 \
+                -e/pkg/usr/bin/qemu-system-i386 | sed -n "s/^shlibs:Depends=//p")"
+
+              cat > /pkg/DEBIAN/control <<EOF
+Package: qemu-qmx
+Version: 1:11.1.50+qmx0.9.0~beta1-1
+Section: otherosfs
+Priority: optional
+Architecture: amd64
+Maintainer: QEMU-QMX Project <noreply@github.com>
+Depends: ${deps}
+Provides: qemu-system-x86, qemu-system-common, qemu-system-data, seabios
+Conflicts: qemu-system-x86, qemu-system-common, qemu-system-data, seabios
+Replaces: qemu-system-x86, qemu-system-common, qemu-system-data, seabios
+Description: QEMU x86 system emulator with QMX configuration support
+ QEMU-QMX replaces the distribution QEMU x86 runtime, shared data,
+ and SeaBIOS packages with the QMX-enabled build.
+EOF
+
+              dpkg-deb --root-owner-group --build /pkg "/out/qemu-qmx_${VERSION}_amd64.deb"
               sha256sum /out/*.deb > /out/SHA256SUMS-debian
             '
 
-      - name: Build Fedora RPM
+      - name: Package Fedora / dnf
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           docker run --rm \
-            -e SEABIOS_COMMIT="$SEABIOS_COMMIT" \
-            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -e VERSION="$VERSION" \
+            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
             -v "$GITHUB_WORKSPACE/artifacts/rpm:/out" \
             fedora:latest \
             bash -euxo pipefail -c '
-              dnf -y install \
-                rpm-build gcc binutils make glib2-devel libslirp-devel meson ninja-build \
-                pixman-devel pkgconf-pkg-config python3 SDL2-devel zlib-devel tar gzip
-              cp -a /source /work
-              cd /work
-              version="$(cat QMX_VERSION)"
-              tag="qemu-qmx-v${version}"
-              mkdir -p /rpmbuild/SOURCES
-              tar \
-                --exclude-vcs \
-                --exclude="./build*" \
-                --exclude="./artifacts" \
-                --transform="s,^\./,qemu-qmx-${tag}/," \
-                -czf "/rpmbuild/SOURCES/${tag}.tar.gz" .
-              tar -C roms \
-                --exclude-vcs \
-                --transform="s,^seabios/,seabios-setupmenu-${SEABIOS_COMMIT}/," \
-                -czf "/rpmbuild/SOURCES/${SEABIOS_COMMIT}.tar.gz" seabios
-              rpmbuild -ba packaging/rpm/qemu-qmx.spec \
-                --define "_topdir /rpmbuild" \
-                --define "_sourcedir /rpmbuild/SOURCES"
+              dnf -y install rpm-build tar gzip
+              mkdir -p /rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+              tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
+              find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
+
+              cat > /rpmbuild/SPECS/qemu-qmx.spec <<EOF
+Name:           qemu-qmx
+Epoch:          2
+Version:        11.1.50
+Release:        0.9.0.beta1%{?dist}
+Summary:        QEMU x86 system emulator with QMX machine configuration support
+License:        GPL-2.0-or-later
+Source0:        qemu-qmx-payload.tar.gz
+BuildArch:      x86_64
+Provides:       qemu-system-x86
+Provides:       qemu-system-x86-core
+Provides:       qemu-common
+Conflicts:      qemu-system-x86
+Conflicts:      qemu-system-x86-core
+Conflicts:      qemu-common
+Obsoletes:      qemu-system-x86 < 2:%{version}-%{release}
+Obsoletes:      qemu-system-x86-core < 2:%{version}-%{release}
+Obsoletes:      qemu-common < 2:%{version}-%{release}
+
+%description
+QEMU-QMX replaces the distribution QEMU x86 runtime and shared data with
+one QMX-enabled payload built once for this release.
+
+%prep
+mkdir payload
+tar -xzf %{SOURCE0} -C payload
+
+%install
+mkdir -p %{buildroot}
+cp -a payload/. %{buildroot}/
+
+%files -f %{_sourcedir}/files.list
+EOF
+
+              rpmbuild -bb /rpmbuild/SPECS/qemu-qmx.spec --define "_topdir /rpmbuild"
               find /rpmbuild/RPMS -name "*.rpm" -exec cp -v {} /out/ \;
               sha256sum /out/*.rpm > /out/SHA256SUMS-rpm
             '
 
-      - name: Build Arch package
+      - name: Package Arch / pacman
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           docker run --rm \
-            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -e VERSION="$VERSION" \
+            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
             -v "$GITHUB_WORKSPACE/artifacts/arch:/out" \
             archlinux:base-devel \
             bash -euxo pipefail -c '
               pacman -Syu --noconfirm
-              pacman -S --noconfirm --needed \
-                git gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
               useradd -m builder
-              mkdir -p /build/src/qemu-qmx /build/src/seabios-qmx
-              cp -a /source/. /build/src/qemu-qmx/
-              rm -rf /build/src/qemu-qmx/roms/seabios
-              cp -a /source/roms/seabios/. /build/src/seabios-qmx/
-              cp /source/packaging/arch/PKGBUILD /build/PKGBUILD
-              sed -i \
-                -e '\''s|source=(|source=(\n  "qemu-qmx::file://src/qemu-qmx"\n  "seabios-qmx::file://src/seabios-qmx"|'\'' \
-                -e '\''/git+https:\/\/github.com\/StochasticEagle\/qemu-qmx.git/d'\'' \
-                -e '\''/git+https:\/\/github.com\/StochasticEagle\/seabios-setupmenu.git/d'\'' \
-                /build/PKGBUILD
+              mkdir -p /build
+              cat > /build/PKGBUILD <<EOF
+pkgname=qemu-qmx
+pkgver=11.1.50.qmx0.9.0beta1
+pkgrel=1
+pkgdesc="QEMU x86 system emulator with QMX machine configuration support"
+arch=("x86_64")
+license=("GPL-2.0-or-later")
+depends=("glib2" "pixman" "zlib" "libslirp" "sdl2-compat")
+provides=("qemu-system-x86" "qemu-common" "qemu-system-x86-firmware")
+conflicts=("qemu-system-x86" "qemu-common" "qemu-system-x86-firmware")
+replaces=("qemu-system-x86" "qemu-common" "qemu-system-x86-firmware")
+
+package() {
+  cp -a /stage/. "\$pkgdir/"
+}
+EOF
               chown -R builder:builder /build
-              su builder -c "cd /build && makepkg --noconfirm --noextract"
+              su builder -c "cd /build && makepkg --noconfirm"
               cp /build/qemu-qmx-*.pkg.tar.* /out/
               sha256sum /out/qemu-qmx-*.pkg.tar.* > /out/SHA256SUMS-arch
             '
