@@ -1,6 +1,7 @@
 name: QEMU-QMX 0.9 Beta Release
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
