@@ -344,9 +344,15 @@ static char *qmx_build_properties(const char *value, const char *id,
     return g_string_free(out, false);
 
 fail:
-    g_clear_pointer(file_out, g_free);
-    g_clear_pointer(drive_out, g_free);
-    g_clear_pointer(name_out, g_free);
+    if (file_out) {
+        g_clear_pointer(file_out, g_free);
+    }
+    if (drive_out) {
+        g_clear_pointer(drive_out, g_free);
+    }
+    if (name_out) {
+        g_clear_pointer(name_out, g_free);
+    }
     g_string_free(out, true);
     return NULL;
 }
