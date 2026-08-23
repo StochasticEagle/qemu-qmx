@@ -107,7 +107,7 @@ jobs:
             qemu-system-aarch64
             qemu-system-riscv64
             qemu-img
-            qemu-ga
+            qga/qemu-ga
           )
           for binary in "${required[@]}"; do
             if [[ ! -x "build-release/$binary" ]]; then
