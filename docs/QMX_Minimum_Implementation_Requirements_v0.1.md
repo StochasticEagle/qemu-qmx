@@ -26,7 +26,7 @@ qemu-system-x86_64
 -drive file=Windows98_SE.iso,format=raw,media=cdrom,if=none,id=win98cd,readonly=on
 -device ide-cd,drive=win98cd,bus=ide.1,unit=0
 
--fw_cfg name=opt/org.seabios/setup,string=1
+-fw_cfg name=opt/seabios/setup,string=1
 ```
 
 QMX MUST be able to represent that configuration, but none of those values become QMX defaults.
@@ -120,7 +120,7 @@ ata1-master: type=cdrom, path="Windows98_SE.iso", status=inserted
 #qemu: disk-format.ata1-master=raw
 #qemu: readonly.ata1-master=on
 
-#qemu: fw_cfg.name="opt/org.seabios/setup", string="1"
+#qemu: fw_cfg.name="opt/seabios/setup", string="1"
 ```
 
 Every relative path must resolve relative to the directory containing the `.qmx` file, not QEMU's current working directory.
@@ -223,13 +223,13 @@ A missing writable CMOS image should normally be created automatically from norm
 The initial implementation must support this particular acceptance-test item:
 
 ```text
-#qemu: fw_cfg.name="opt/org.seabios/setup", string="1"
+#qemu: fw_cfg.name="opt/seabios/setup", string="1"
 ```
 
 which maps to:
 
 ```text
--fw_cfg name=opt/org.seabios/setup,string=1
+-fw_cfg name=opt/seabios/setup,string=1
 ```
 
 It is an example of general `fw_cfg` support, not a QMX default or a special-purpose restriction. `fw_cfg` remains only an input/configuration mechanism; persistent BIOS settings remain in the file-backed CMOS/NVRAM state.
