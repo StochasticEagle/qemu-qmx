@@ -4,6 +4,7 @@
 	dh $@
 
 override_dh_auto_configure:
+	make -C roms/seabios
 	rm -rf build-package
 	mkdir build-package
 	cd build-package && ../configure \
@@ -31,6 +32,7 @@ override_dh_auto_test:
 override_dh_auto_install:
 	install -Dm0755 build-package/qemu-system-x86_64 debian/qemu-qmx/usr/bin/qemu-system-x86_64
 	install -Dm0755 build-package/qemu-system-i386 debian/qemu-qmx/usr/bin/qemu-system-i386
+	install -Dm0644 roms/seabios/out/bios.bin debian/qemu-qmx/usr/share/qemu/bios-qmx.bin
 	install -Dm0644 QMX_VERSION debian/qemu-qmx/usr/share/doc/qemu-qmx/QMX_VERSION
 	install -Dm0644 docs/QMX_Format_Specification_v0.2.md debian/qemu-qmx/usr/share/doc/qemu-qmx/QMX_Format_Specification_v0.2.md
 	install -Dm0644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md debian/qemu-qmx/usr/share/doc/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
@@ -38,4 +40,5 @@ override_dh_auto_install:
 
 override_dh_auto_clean:
 	rm -rf build-package
+	$(MAKE) -C roms/seabios clean || true
 	dh_auto_clean
