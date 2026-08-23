@@ -79,6 +79,11 @@ int main(int argc, char **argv)
 
     qemu_init(argc, argv);
 
+    if (!qmx_runtime_init(&err)) {
+        error_report_err(err);
+        return EXIT_FAILURE;
+    }
+
     /*
      * qemu_init acquires the BQL and replay mutex lock. BQL is acquired when
      * initializing cpus, to block associated threads until initialization is
