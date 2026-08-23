@@ -1,6 +1,7 @@
 pkgname=qemu-qmx
 _qmxver=0.9.0-beta.1
 _qemuversion=11.1.50
+_seabios_commit=e0b009af38836aa5d1d55713d470721835f03664
 pkgver=${_qemuversion}.qmx0.9.0beta1
 pkgrel=1
 pkgdesc='QEMU x86 system emulator with QMX machine configuration support'
@@ -12,8 +13,16 @@ conflicts=('qemu-system-x86')
 replaces=('qemu-system-x86')
 depends=('glib2' 'pixman' 'zlib' 'libslirp' 'sdl2-compat' 'qemu-common' 'qemu-system-x86-firmware')
 makedepends=('git' 'gcc' 'binutils' 'make' 'meson' 'ninja' 'python' 'pkgconf')
-source=("qemu-qmx::git+https://github.com/StochasticEagle/qemu-qmx.git#tag=qemu-qmx-v${_qmxver}")
-sha256sums=('SKIP')
+source=(
+  "qemu-qmx::git+https://github.com/StochasticEagle/qemu-qmx.git#tag=qemu-qmx-v${_qmxver}"
+  "seabios-qmx::git+https://github.com/StochasticEagle/seabios-setupmenu.git#commit=${_seabios_commit}"
+)
+sha256sums=('SKIP' 'SKIP')
+
+prepare() {
+  rm -rf "$srcdir/qemu-qmx/roms/seabios"
+  ln -s "$srcdir/seabios-qmx" "$srcdir/qemu-qmx/roms/seabios"
+}
 
 build() {
   cd "$srcdir/qemu-qmx"
