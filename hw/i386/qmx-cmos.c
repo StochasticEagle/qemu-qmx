@@ -128,48 +128,65 @@ static void qmx_cmos_set_current_time(MC146818RtcState *s)
     s->offset = 0;
 }
 
-static bool qmx_cmos_changed(QmxCmosState *state)
+static void qmx_cmos_snapshot(QmxCmosState *state,
+                              uint8_t image[QMX_CMOS_SIZE])
 {
     static const uint8_t time_regs[] = {
         RTC_SECONDS, RTC_MINUTES, RTC_HOURS, RTC_DAY_OF_WEEK,
         RTC_DAY_OF_MONTH, RTC_MONTH, RTC_YEAR, RTC_CENTURY,
     };
-    uint8_t current[QMX_CMOS_SIZE];
     size_t i;
 
-    memcpy(current, state->rtc->cmos_data, QMX_CMOS_SIZE);
+    memcpy(image, state->rtc->cmos_data, QMX_CMOS_SIZE);
 
     /* Register C is interrupt state, not persistent configuration. */
-    current[RTC_REG_C] = state->last[RTC_REG_C];
+    image[RTC_REG_C] = state->last[RTC_REG_C];
 
+    /*
+     * With rtc_init=time0 the image provides persistent CMOS configuration,
+     * while the wall clock is initialized from QEMU's normal time source.
+     * Preserve the previously persisted RTC date/time bytes when saving so a
+     * configuration change (for example SeaBIOS boot order or F2 delay) does
+     * not incidentally turn the image into a time snapshot.
+     */
     if (!state->rtc_from_image) {
         for (i = 0; i < ARRAY_SIZE(time_regs); i++) {
-            current[time_regs[i]] = state->last[time_regs[i]];
+            image[time_regs[i]] = state->last[time_regs[i]];
         }
     }
+}
+
+static bool qmx_cmos_changed(QmxCmosState *state)
+{
+    uint8_t current[QMX_CMOS_SIZE];
+
+    qmx_cmos_snapshot(state, current);
     return memcmp(state->last, current, QMX_CMOS_SIZE) != 0;
 }
 
 static bool qmx_cmos_write(QmxCmosState *state, bool force)
 {
     g_autoptr(GError) gerr = NULL;
+    uint8_t image[QMX_CMOS_SIZE];
 
     if (!state->active) {
         return true;
     }
-    if (!force && !qmx_cmos_changed(state)) {
+
+    qmx_cmos_snapshot(state, image);
+    if (!force && memcmp(state->last, image, QMX_CMOS_SIZE) == 0) {
         return true;
     }
 
     if (!g_file_set_contents(state->file,
-                             (const char *)state->rtc->cmos_data,
+                             (const char *)image,
                              QMX_CMOS_SIZE, &gerr)) {
         warn_report("QMX nvram: cannot write '%s': %s; disabling persistent CMOS",
                     state->file, gerr->message);
         state->active = false;
         return false;
     }
-    memcpy(state->last, state->rtc->cmos_data, QMX_CMOS_SIZE);
+    memcpy(state->last, image, QMX_CMOS_SIZE);
     return true;
 }
 
@@ -261,7 +278,11 @@ static bool qmx_cmos_init(const char *file, const char *rtc_init, Error **errp)
     qmx_cmos.rtc = rtc;
     qmx_cmos.file = g_strdup(file);
     qmx_cmos.rtc_from_image = !strcmp(rtc_init, "image");
-    memcpy(qmx_cmos.last, rtc->cmos_data, QMX_CMOS_SIZE);
+    memcpy(qmx_cmos.last, contents, QMX_CMOS_SIZE);
+    qmx_cmos.last[RTC_REG_C] = current[RTC_REG_C];
+    if (qmx_cmos.rtc_from_image) {
+        memcpy(qmx_cmos.last, rtc->cmos_data, QMX_CMOS_SIZE);
+    }
     qmx_cmos.active = true;
 
     qmx_cmos.exit_notifier.notify = qmx_cmos_exit;
