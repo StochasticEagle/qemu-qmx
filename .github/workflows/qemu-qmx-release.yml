@@ -75,7 +75,7 @@ jobs:
             build-essential binutils make meson ninja-build pkg-config python3 \
             libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
 
-      - name: Build QEMU-QMX and SeaBIOS once
+      - name: Build full QEMU-QMX and SeaBIOS once
         shell: bash
         run: |
           make -C roms/seabios
@@ -84,17 +84,11 @@ jobs:
           ../configure \
             --prefix=/usr \
             --libdir=/usr/lib \
-            --target-list=i386-softmmu,x86_64-softmmu \
-            --without-default-features \
             --enable-system \
             --enable-kvm \
             --enable-tcg \
             --enable-sdl \
-            --enable-slirp \
-            --audio-drv-list=sdl \
-            --disable-docs \
-            --disable-tools \
-            --disable-guest-agent
+            --enable-slirp
           ninja
           cd ..
           cc -O2 -Wall -Wextra \
@@ -102,11 +96,15 @@ jobs:
             -o build-release/qmx-verify-gui \
             $(pkg-config --cflags --libs sdl2)
 
-      - name: Test the single build
+      - name: Test the single full build
         shell: bash
         run: |
           python3 tests/qmx/test-qmx-parser.py build-release/qemu-system-x86_64
           python3 tests/qmx/test-qmx-integration.py build-release/qemu-system-x86_64
+          test -x build-release/qemu-system-aarch64
+          test -x build-release/qemu-system-riscv64
+          test -x build-release/qemu-img
+          test -x build-release/qemu-ga
 
       - name: Stage canonical release payload
         shell: bash
@@ -126,6 +124,10 @@ jobs:
           install -Dm0644 packaging/linux/qemu-qmx-verify-kde.desktop stage-release/usr/share/kio/servicemenus/qemu-qmx-verify.desktop
           test -x stage-release/usr/bin/qemu-system-x86_64
           test -x stage-release/usr/bin/qemu-system-i386
+          test -x stage-release/usr/bin/qemu-system-aarch64
+          test -x stage-release/usr/bin/qemu-system-riscv64
+          test -x stage-release/usr/bin/qemu-img
+          test -x stage-release/usr/bin/qemu-ga
           test -x stage-release/usr/libexec/qemu-qmx/qmx-verify-gui
           test -f stage-release/usr/share/qemu/bios.bin
           test -f stage-release/usr/share/qemu/bios-256k.bin
@@ -157,10 +159,11 @@ jobs:
                 "" \
                 "Package: qemu-qmx" \
                 "Architecture: amd64" \
-                "Description: QEMU x86 system emulator with QMX configuration support" \
+                "Description: Complete QEMU build with QMX configuration support" \
                 > /tmp/debian/control
               cd /tmp
-              deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 -e/pkg/usr/libexec/qemu-qmx/qmx-verify-gui | sed -n "s/^shlibs:Depends=//p")"
+              deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 -e/pkg/usr/bin/qemu-img -e/pkg/usr/libexec/qemu-qmx/qmx-verify-gui | sed -n "s/^shlibs:Depends=//p")"
+              qemu_packages="$(apt-cache pkgnames | grep -E "^qemu($|-)" | grep -v "^qemu-qmx$" | sort -u | paste -sd, - | sed "s/,/, /g")"
               printf "%s\n" \
                 "Package: qemu-qmx" \
                 "Version: 1:11.1.50+qmx0.9.0~beta1-1" \
@@ -169,13 +172,14 @@ jobs:
                 "Architecture: amd64" \
                 "Maintainer: QEMU-QMX Project <noreply@github.com>" \
                 "Depends: ${deps}" \
-                "Provides: qemu-system-x86, qemu-system-common, qemu-system-data, seabios" \
-                "Conflicts: qemu-system-x86, qemu-system-common, qemu-system-data, seabios" \
-                "Replaces: qemu-system-x86, qemu-system-common, qemu-system-data, seabios" \
-                "Description: QEMU x86 system emulator with QMX configuration support" \
-                " QEMU-QMX is a system replacement for the distribution x86 QEMU runtime," \
-                " shared data, and SeaBIOS packages. It installs the QMX-enabled build at" \
-                " the standard QEMU system paths rather than alongside the distro build." \
+                "Provides: qemu-system-x86, qemu-system-common, qemu-system-data, qemu-utils, qemu-user, qemu-user-static, qemu-guest-agent, seabios" \
+                "Conflicts: ${qemu_packages}, seabios" \
+                "Breaks: ${qemu_packages}, seabios" \
+                "Replaces: ${qemu_packages}, seabios" \
+                "Description: Complete QEMU build with QMX configuration support" \
+                " QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
+                " It installs the full QEMU build at the standard system paths and adds QMX" \
+                " machine-configuration support to the x86 system emulators." \
                 > /pkg/DEBIAN/control
               dpkg-deb --root-owner-group --build /pkg "/out/qemu-qmx_${VERSION}_amd64.deb"
               sha256sum /out/*.deb > /out/SHA256SUMS-debian
@@ -192,47 +196,47 @@ jobs:
             -v "$GITHUB_WORKSPACE/artifacts/rpm:/out" \
             fedora:latest \
             bash -euxo pipefail -c '
-              dnf -y install rpm-build tar gzip
+              dnf -y install rpm-build tar gzip dnf-plugins-core
               mkdir -p /rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
               tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
               find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
-              printf "%s\n" \
-                "Name:           qemu-qmx" \
-                "Epoch:          2" \
-                "Version:        11.1.50" \
-                "Release:        0.9.0.beta1%{?dist}" \
-                "Summary:        QEMU x86 system emulator with QMX machine configuration support" \
-                "License:        GPL-2.0-or-later" \
-                "Source0:        qemu-qmx-payload.tar.gz" \
-                "BuildArch:      x86_64" \
-                "Provides:       qemu-system-x86" \
-                "Provides:       qemu-system-x86-core" \
-                "Provides:       qemu-common" \
-                "Provides:       seabios-bin" \
-                "Conflicts:      qemu-system-x86" \
-                "Conflicts:      qemu-system-x86-core" \
-                "Conflicts:      qemu-common" \
-                "Conflicts:      seabios-bin" \
-                "Obsoletes:      qemu-system-x86 < 2:%{version}-%{release}" \
-                "Obsoletes:      qemu-system-x86-core < 2:%{version}-%{release}" \
-                "Obsoletes:      qemu-common < 2:%{version}-%{release}" \
-                "Obsoletes:      seabios-bin" \
-                "" \
-                "%description" \
-                "QEMU-QMX is a system replacement for the distribution x86 QEMU runtime," \
-                "shared data, and SeaBIOS firmware. It installs the QMX-enabled payload" \
-                "at the standard QEMU system paths rather than alongside the distro build." \
-                "" \
-                "%prep" \
-                "mkdir payload" \
-                "tar -xzf %{SOURCE0} -C payload" \
-                "" \
-                "%install" \
-                "mkdir -p %{buildroot}" \
-                "cp -a payload/. %{buildroot}/" \
-                "" \
-                "%files -f %{_sourcedir}/files.list" \
-                > /rpmbuild/SPECS/qemu-qmx.spec
+              qemu_packages="$(dnf repoquery --qf "%{name}" "qemu*" 2>/dev/null | grep -E "^qemu($|-)" | grep -v "^qemu-qmx$" | sort -u)"
+              {
+                printf "%s\n" \
+                  "Name:           qemu-qmx" \
+                  "Epoch:          2" \
+                  "Version:        11.1.50" \
+                  "Release:        0.9.0.beta1%{?dist}" \
+                  "Summary:        Complete QEMU build with QMX machine configuration support" \
+                  "License:        GPL-2.0-or-later" \
+                  "Source0:        qemu-qmx-payload.tar.gz" \
+                  "BuildArch:      x86_64"
+                while IFS= read -r pkg; do
+                  test -n "$pkg" || continue
+                  printf "Provides:       %s\n" "$pkg"
+                  printf "Conflicts:      %s\n" "$pkg"
+                  printf "Obsoletes:      %s\n" "$pkg"
+                done <<< "$qemu_packages"
+                printf "%s\n" \
+                  "Provides:       seabios-bin" \
+                  "Conflicts:      seabios-bin" \
+                  "Obsoletes:      seabios-bin" \
+                  "" \
+                  "%description" \
+                  "QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
+                  "It installs the full QEMU build at the standard system paths and adds QMX" \
+                  "machine-configuration support to the x86 system emulators." \
+                  "" \
+                  "%prep" \
+                  "mkdir payload" \
+                  "tar -xzf %{SOURCE0} -C payload" \
+                  "" \
+                  "%install" \
+                  "mkdir -p %{buildroot}" \
+                  "cp -a payload/. %{buildroot}/" \
+                  "" \
+                  "%files -f %{_sourcedir}/files.list"
+              } > /rpmbuild/SPECS/qemu-qmx.spec
               rpmbuild -bb /rpmbuild/SPECS/qemu-qmx.spec --define "_topdir /rpmbuild"
               find /rpmbuild/RPMS -name "*.rpm" -exec cp -v {} /out/ \;
               sha256sum /out/*.rpm > /out/SHA256SUMS-rpm
@@ -253,17 +257,19 @@ jobs:
               pacman -S --noconfirm --needed glib2 pixman zlib libslirp sdl2-compat
               useradd -m builder
               mkdir -p /build
+              qemu_conflicts="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
+              qemu_provides="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2 \"=\" \$3}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
               printf "%s\n" \
                 "pkgname=qemu-qmx" \
                 "pkgver=11.1.50.qmx0.9.0beta1" \
                 "pkgrel=1" \
-                "pkgdesc=\"QEMU x86 system emulator with QMX machine configuration support\"" \
+                "pkgdesc=\"Complete QEMU build with QMX machine configuration support\"" \
                 "arch=(\"x86_64\")" \
                 "license=(\"GPL-2.0-or-later\")" \
                 "depends=(\"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
-                "provides=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\")" \
-                "conflicts=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\" \"qemu-base\" \"qemu-desktop\" \"qemu-full\" \"qemu-emulators-full\")" \
-                "replaces=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\" \"qemu-base\" \"qemu-desktop\" \"qemu-full\" \"qemu-emulators-full\")" \
+                "provides=(${qemu_provides})" \
+                "conflicts=(${qemu_conflicts})" \
+                "replaces=(${qemu_conflicts})" \
                 "" \
                 "package() {" \
                 "  cp -a /stage/. \"\$pkgdir/\"" \
