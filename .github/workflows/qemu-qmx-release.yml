@@ -88,7 +88,9 @@ jobs:
             --enable-kvm \
             --enable-tcg \
             --enable-sdl \
-            --enable-slirp
+            --enable-slirp \
+            --enable-tools \
+            --enable-guest-agent
           ninja
           cd ..
           cc -O2 -Wall -Wextra \
@@ -101,10 +103,19 @@ jobs:
         run: |
           python3 tests/qmx/test-qmx-parser.py build-release/qemu-system-x86_64
           python3 tests/qmx/test-qmx-integration.py build-release/qemu-system-x86_64
-          test -x build-release/qemu-system-aarch64
-          test -x build-release/qemu-system-riscv64
-          test -x build-release/qemu-img
-          test -x build-release/qemu-ga
+          required=(
+            qemu-system-aarch64
+            qemu-system-riscv64
+            qemu-img
+            qemu-ga
+          )
+          for binary in "${required[@]}"; do
+            if [[ ! -x "build-release/$binary" ]]; then
+              echo "Required full-build binary missing: build-release/$binary" >&2
+              find build-release -maxdepth 2 -type f -name 'qemu*' -printf '%p\n' | sort >&2
+              exit 1
+            fi
+          done
 
       - name: Stage canonical release payload
         shell: bash
