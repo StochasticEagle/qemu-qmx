@@ -1,133 +1,10 @@
 # QMX Minimum Implementation Requirements v0.1
 
-This document supplements `QMX_Format_Specification_v0.1.md` and defines the minimum acceptance requirements for the first usable QMX implementation.
+This document supplements `QMX_Format_Specification_v0.2.md` and defines the minimum acceptance requirements for the first usable QMX implementation.
 
-## Required parameter families
+## 1. QMX is additive
 
-The concrete Windows 98 configuration below is an acceptance fixture, not a set of QMX defaults:
-
-```text
-qemu-system-x86_64
--display sdl
--m 384
--enable-kvm
--cpu pentium3
--machine pc,acpi=off
--vga cirrus
-
--audiodev sdl,id=snd0
--device sb16,audiodev=snd0
-
--boot menu=on,order=ca
-
--drive file=windows98se.qcow2,format=qcow2,if=none,id=win98hdd
--device ide-hd,drive=win98hdd,bus=ide.0,unit=0
-
--drive file=Windows98_SE.iso,format=raw,media=cdrom,if=none,id=win98cd,readonly=on
--device ide-cd,drive=win98cd,bus=ide.1,unit=0
-
--fw_cfg name=opt/seabios/setup,string=1
-```
-
-QMX MUST be able to represent that configuration, but none of those values become QMX defaults.
-
-The initial implementation must support the following **parameter families** generically:
-
-- display backend and its valid QEMU properties;
-- guest memory size;
-- accelerator selection and accelerator properties;
-- CPU model and CPU properties;
-- machine type and machine properties;
-- VGA/display-adapter selection;
-- audio backends and their properties;
-- audio devices and their properties;
-- boot menu and boot-order settings;
-- block backends, including QEMU-supported image formats and drive properties;
-- device attachment, including explicit IDE bus/unit placement;
-- `fw_cfg` items and their supported QEMU properties.
-
-The values shown in the Windows 98 fixture (`sdl`, `384`, `kvm`, `pentium3`, `pc,acpi=off`, `cirrus`, `sb16`, `qcow2`, `raw`, and so on) are examples that must work, not a whitelist.
-
-### QEMU-profile value coverage
-
-For a QMX file using `#qmx: profile=qemu`, QMX SHOULD support every value that the running QEMU build supports for the mapped parameter family. QMX must not maintain a separate hard-coded whitelist of QEMU display backends, accelerators, CPU models, machine types, VGA devices, audio backends/devices, block formats, device properties, or `fw_cfg` values unless translation is technically required.
-
-Where possible, QMX should translate its structured input directly into QEMU's existing option/configuration objects and let the existing QEMU parser and device model validate the value. This keeps QMX capability synchronized with the QEMU build instead of freezing QMX to the examples in this document.
-
-Examples:
-
-- `#qemu: display=sdl` is valid when that QEMU build provides SDL; another valid display backend supported by the build should also be accepted through the same parameter family.
-- `#qemu: accel=kvm` is one valid accelerator; other accelerators supported by the running QEMU build should be expressible without changing the QMX grammar.
-- `cpu:` / QEMU CPU configuration must not be limited to `pentium3`; the QEMU profile must be able to select other CPU models and supported CPU properties.
-- `#qemu: machine=pc` is one machine type; other machine types supported by the running QEMU binary should be selectable.
-- `vga: extension=cirrus` is one portable/legacy mapping; QEMU-profile configuration must also be able to select other VGA/display devices supported by QEMU.
-- `sb16` is an acceptance-test audio device, not the only permitted audio device.
-- `qcow2` and `raw` are acceptance-test block formats, not the only permitted formats.
-- the example boot order `ca` / `cdrom, disk` is not a default; other valid boot-order combinations must be supported.
-- the example `fw_cfg` item is not special-cased as the only usable item; general supported `fw_cfg` entries must be representable.
-
-The Portable QMX profile may define a smaller Bochs-compatible vocabulary where semantic translation is necessary. That restriction must not be imposed on the QEMU profile.
-
-## Defaults and omitted parameters
-
-QMX does not redefine QEMU defaults merely by adding support for a parameter family.
-
-If a QMX file omits a parameter, the effective value should be the same value QEMU would normally use in the corresponding situation unless another QMX directive necessarily implies an explicit device or property.
-
-Examples:
-
-- omitting a display directive does not imply SDL;
-- omitting memory does not imply 384 MB;
-- omitting accelerator configuration does not imply KVM;
-- omitting CPU configuration does not imply Pentium III;
-- omitting machine configuration does not imply `pc,acpi=off` beyond QEMU's own normal default selection;
-- omitting VGA configuration does not imply Cirrus;
-- omitting audio does not imply SB16 or SDL audio;
-- omitting a boot directive does not imply `ca`;
-- omitting a drive does not create the Windows 98 example drive;
-- omitting the SeaBIOS Setup `fw_cfg` item does not request Setup entry.
-
-## Example QMX representation
-
-The following is one test fixture corresponding to the Windows 98 configuration above:
-
-```text
-#qmx: version=1
-#qmx: profile=qemu
-#qmx: name="Windows 98 SE"
-
-#qemu: display=sdl
-#qemu: accel=kvm
-#qemu: machine=pc
-#qemu: acpi=off
-
-memory: guest=384, host=384
-cpu: model=p3_katmai, count=1
-vga: extension=cirrus
-
-#qemu: audiodev.snd0.driver=sdl
-#qemu: device.sb16.audiodev=snd0
-
-boot: cdrom, disk
-
-ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
-ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15
-
-ata0-master: type=disk, path="windows98se.qcow2"
-#qemu: disk-format.ata0-master=qcow2
-
-ata1-master: type=cdrom, path="Windows98_SE.iso", status=inserted
-#qemu: disk-format.ata1-master=raw
-#qemu: readonly.ata1-master=on
-
-#qemu: fw_cfg.name="opt/seabios/setup", string="1"
-```
-
-Every relative path must resolve relative to the directory containing the `.qmx` file, not QEMU's current working directory.
-
-## QMX must be additive
-
-If no QMX file is specified, QEMU must follow the normal upstream QEMU argument-processing and machine-creation path. QMX must not change defaults, path handling, media failure behavior, firmware behavior, device creation, or command-line semantics for ordinary QEMU invocations.
+If no QMX file is specified, QEMU must follow its normal upstream argument-processing and machine-creation path. QMX must not change ordinary QEMU defaults, path handling, media failure behavior, firmware behavior, device creation, or command-line semantics.
 
 Both forms are required:
 
@@ -136,100 +13,163 @@ qemu-system-x86_64 machine.qmx
 qemu-system-x86_64 -qmx machine.qmx
 ```
 
-## Device topology
+## 2. Required grammar
 
-QMX must preserve explicitly declared hardware placement. For the initial legacy-PC target:
+The initial implementation must parse the compact QEMU-native grammar:
 
-- `ata0-master` maps to `ide.0`, unit 0;
-- `ata0-slave` maps to `ide.0`, unit 1;
-- `ata1-master` maps to `ide.1`, unit 0;
-- `ata1-slave` maps to `ide.1`, unit 1.
+```text
+key = value
+family.id = value
+family.id = property=value,property=value,...
+```
 
-A device must not be silently attached to another available slot if its configured slot cannot be created.
+Comments begin with `#`. Quoted strings use double quotes. Parsing must never invoke a shell.
 
-QEMU-profile generic device configuration may additionally express other QEMU buses, devices, and properties as support is implemented; the four legacy IDE names above are required portable convenience mappings, not the complete QEMU device model.
+Duplicate scalar keys and duplicate object keys are fatal errors.
 
-## Failure policy
+## 3. Required parameter families
 
-QMX distinguishes configuration errors from media-availability errors.
+The initial implementation must support these families generically:
 
-### Fatal configuration errors
+- `machine`
+- `memory`
+- `accel`
+- `cpu`
+- `display`
+- `vga`
+- `audiodev.<id>`
+- `device.<id>`
+- `boot`
+- `drive.<id>`
+- `fw_cfg.<id>`
+- `nvram`
 
-The following remain fatal:
+For mapped QEMU families, values should be handed to QEMU's existing configuration parsers and device models wherever practical. The QMX implementation must not impose a separate whitelist when QEMU can validate the value directly.
 
-- the QMX file itself cannot be opened;
-- malformed QMX syntax;
-- unknown or unsupported required directive;
-- a parameter value rejected by the underlying QEMU subsystem (for example, an unavailable machine type or CPU model);
-- impossible device topology, including duplicate use of the same explicitly assigned IDE slot;
-- invalid numeric or enum values;
-- a required BIOS/ROM image cannot be loaded.
+The Windows 98 fixture values are examples that must work, not defaults or a whitelist.
 
-Diagnostics should identify the QMX file and source directive/line when possible and should preserve the useful diagnostic from the underlying QEMU parser where applicable.
+## 4. Defaults and omitted parameters
 
-### Non-fatal disk and removable-media failures
+Omitting a QMX setting leaves the corresponding behavior to normal QEMU defaults unless another explicitly configured object necessarily implies a value.
 
-A drive, CD-ROM, or floppy image declared by QMX must not prevent the rest of the VM from starting merely because its backing file is unavailable.
+Therefore, QMX does not imply SDL, 384 MB RAM, KVM, Pentium III, `pc`, ACPI disabled, Cirrus VGA, SB16, a particular boot order, any drive, or SeaBIOS Setup entry unless those settings are present in the QMX file.
 
-At minimum, these conditions are non-fatal:
+## 5. Required Windows 98 acceptance fixture
+
+The initial implementation must be able to represent and launch the semantic equivalent of:
+
+```text
+qemu-system-x86_64 \
+  -display sdl \
+  -m 384 \
+  -enable-kvm \
+  -cpu pentium3 \
+  -machine pc,acpi=off \
+  -vga cirrus \
+  -audiodev sdl,id=snd0 \
+  -device sb16,audiodev=snd0 \
+  -boot menu=on,order=ca \
+  -drive file=windows98se.qcow2,format=qcow2,if=none,id=win98hdd \
+  -device ide-hd,drive=win98hdd,bus=ide.0,unit=0 \
+  -drive file=Windows98_SE.iso,format=raw,media=cdrom,if=none,id=win98cd,readonly=on \
+  -device ide-cd,drive=win98cd,bus=ide.1,unit=0 \
+  -fw_cfg name=opt/seabios/setup,string=1
+```
+
+using:
+
+```text
+qmx = 1
+name = "Windows 98 SE"
+
+machine = pc,acpi=off
+memory = 384M
+accel = kvm
+cpu = pentium3
+display = sdl
+vga = cirrus
+
+audiodev.snd0 = sdl
+device.sound = sb16,audiodev=snd0
+
+boot = menu=on,order=ca
+
+drive.win98hdd = file="windows98se.qcow2",format=qcow2,if=none
+device.hdd = ide-hd,drive=win98hdd,bus=ide.0,unit=0
+
+drive.win98cd = file="Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
+device.cdrom = ide-cd,drive=win98cd,bus=ide.1,unit=0
+
+fw_cfg.setup = name="opt/seabios/setup",string="1"
+
+nvram = file="machine.cmos",format=cmos128,rtc_init=time0
+```
+
+The `nvram` line is additional persistent firmware state and is not part of the legacy command-line fixture.
+
+## 6. Object IDs
+
+The suffix in a named QMX object is a stable QMX-local identifier:
+
+```text
+drive.win98hdd = ...
+device.hdd = ...
+audiodev.snd0 = ...
+```
+
+Where the corresponding QEMU option requires an `id`, QMX should normally derive it from the object suffix rather than requiring duplicated `id=` syntax.
+
+References such as `drive=win98hdd` must resolve to the corresponding named object.
+
+## 7. Relative paths
+
+Every relative filesystem path originating from a QMX path-valued setting must resolve relative to the directory containing the QMX file, never relative to QEMU's current working directory.
+
+Absolute paths remain absolute.
+
+Only semantically path-valued properties are rewritten. Arbitrary string values are not treated as paths.
+
+## 8. Media failure policy
+
+Media availability failures for QMX-defined drives are non-fatal by default.
+
+At minimum, the following must warn and continue:
 
 - file not found;
-- permission/access denied;
+- access denied;
 - removable host device absent;
-- path exists but cannot currently be opened;
-- image cannot be opened using its configured mode.
+- backing file cannot currently be opened;
+- configured image format cannot open or validate the image;
+- initial host I/O failure while opening media.
 
-QEMU must issue a clear warning containing the configured device, resolved host path, OS/error reason, and action taken, then continue with that device slot empty.
+The warning must identify the QMX object, resolved path, error reason, and action taken.
 
-Example:
+If a failed drive is referenced by a device object, that device is omitted and its explicitly configured slot remains empty. It must not be moved to another bus or unit.
 
-```text
-QMX warning: ata1-master: cannot open '/vm/Windows98_SE.iso': No such file or directory; continuing with Secondary IDE Master empty
-```
+Traditional explicit QEMU command-line media failure behavior remains unchanged.
 
-Example:
+Configuration errors remain fatal, including malformed syntax, duplicate keys, unsupported QMX major version, impossible topology, and non-media values rejected by the relevant QEMU subsystem.
 
-```text
-QMX warning: ata0-master: cannot open '/vm/windows98se.qcow2': Permission denied; continuing with Primary IDE Master empty
-```
+## 9. Persistent CMOS
 
-This tolerant startup policy applies only to media declared through QMX. Traditional explicit QEMU `-drive` command-line behavior remains unchanged.
-
-### Invalid or corrupt image files
-
-QMX v1 defaults to tolerant startup for media images:
-
-- missing or inaccessible image: warn, omit device, continue;
-- format cannot be determined when no explicit format is present: warn, omit device, continue;
-- explicitly declared format but invalid/corrupt image: warn, omit device, continue;
-- initial host I/O failure: warn, omit device, continue.
-
-A future strict-media mode may promote these errors to fatal startup failures.
-
-## Persistent CMOS failure
-
-A configured `cmosimage` is persistent firmware state rather than guest storage. If it cannot be opened, QEMU should warn and continue with volatile CMOS using normal machine defaults, unless the QMX explicitly marks persistent CMOS as required.
-
-Example:
+The minimum implementation must support:
 
 ```text
-QMX warning: cannot open '/vm/machine.cmos' for persistence: Permission denied; continuing with volatile CMOS
+nvram = file="machine.cmos",format=cmos128,rtc_init=time0
 ```
 
-A missing writable CMOS image should normally be created automatically from normal machine CMOS defaults.
+`cmos128` is exactly 128 bytes of legacy PC CMOS state. This binary layout may be compatible with other emulators, but QMX itself is QEMU-specific.
 
-## SeaBIOS Setup entry
+If the writable file does not exist, QEMU should create it from initialized machine CMOS defaults. If it cannot be opened, QEMU should warn and continue with volatile CMOS.
 
-The initial implementation must support this particular acceptance-test item:
+Guest writes must update normal emulated CMOS, and persistent changes should be flushed promptly and on normal QEMU shutdown.
+
+## 10. Conversion requirement
+
+The parser should produce a simple representation equivalent to tuples of:
 
 ```text
-#qemu: fw_cfg.name="opt/seabios/setup", string="1"
+(family, optional-id, value)
 ```
 
-which maps to:
-
-```text
--fw_cfg name=opt/seabios/setup,string=1
-```
-
-It is an example of general `fw_cfg` support, not a QMX default or a special-purpose restriction. `fw_cfg` remains only an input/configuration mechanism; persistent BIOS settings remain in the file-backed CMOS/NVRAM state.
+This representation must not depend on shell command text and should be straightforward to consume by conversion tooling targeting QEMU CLI, libvirt XML, Proxmox configuration, or other formats.
