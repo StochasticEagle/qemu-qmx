@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Verify QMX Configuration
+Comment=Validate a QMX virtual machine configuration without starting the VM
+Exec=/usr/libexec/qemu-qmx/qmx-verify-gui %f
+TryExec=/usr/libexec/qemu-qmx/qmx-verify-gui
+Terminal=false
+NoDisplay=true
+MimeType=application/x-qemu-qmx;
