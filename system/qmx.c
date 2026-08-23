@@ -15,12 +15,17 @@
 static GHashTable *qmx_drive_paths;
 static GHashTable *qmx_device_drives;
 static GHashTable *qmx_failed_drives;
+static char *qmx_nvram_file;
+static char *qmx_nvram_rtc_init;
+static QmxNvramBackendInit qmx_nvram_backend;
 
 static void qmx_runtime_reset(void)
 {
     g_clear_pointer(&qmx_drive_paths, g_hash_table_destroy);
     g_clear_pointer(&qmx_device_drives, g_hash_table_destroy);
     g_clear_pointer(&qmx_failed_drives, g_hash_table_destroy);
+    g_clear_pointer(&qmx_nvram_file, g_free);
+    g_clear_pointer(&qmx_nvram_rtc_init, g_free);
 
     qmx_drive_paths = g_hash_table_new_full(g_str_hash, g_str_equal,
                                             g_free, g_free);
@@ -28,6 +33,24 @@ static void qmx_runtime_reset(void)
                                               g_free, g_free);
     qmx_failed_drives = g_hash_table_new_full(g_str_hash, g_str_equal,
                                               g_free, NULL);
+}
+
+void qmx_register_nvram_backend(QmxNvramBackendInit initfn)
+{
+    qmx_nvram_backend = initfn;
+}
+
+bool qmx_runtime_init(Error **errp)
+{
+    if (!qmx_nvram_file) {
+        return true;
+    }
+    if (!qmx_nvram_backend) {
+        error_setg(errp,
+                   "QMX nvram format cmos128 is not supported by this machine/target");
+        return false;
+    }
+    return qmx_nvram_backend(qmx_nvram_file, qmx_nvram_rtc_init, errp);
 }
 
 void qmx_mark_drive_failed(const char *id)
@@ -277,7 +300,8 @@ static char *qmx_build_properties(const char *value, const char *id,
         }
         if (!eq) {
             if (have_bare || i != 0) {
-                error_setg(errp, "bare property-list value is only valid as the first item");
+                error_setg(errp,
+                           "bare property-list value is only valid as the first item");
                 goto fail;
             }
             have_bare = true;
@@ -488,9 +512,8 @@ static GHashTable *qmx_collect_cli_overrides(int argc, char **argv,
     return overrides;
 }
 
-static bool qmx_translate_nvram(GPtrArray *args, const char *value,
-                                const char *qmx_dir, bool emit,
-                                Error **errp)
+static bool qmx_translate_nvram(const char *value, const char *qmx_dir,
+                                bool emit, Error **errp)
 {
     g_autoptr(GPtrArray) fields = qmx_split_fields(value, errp);
     g_autoptr(GHashTable) seen = NULL;
@@ -563,12 +586,10 @@ static bool qmx_translate_nvram(GPtrArray *args, const char *value,
     }
 
     if (emit) {
-        g_autofree char *file_global =
-            g_strdup_printf("mc146818rtc.qmx-cmos-file=%s", file);
-        g_autofree char *init_global =
-            g_strdup_printf("mc146818rtc.qmx-rtc-init=%s", rtc_init);
-        qmx_add_option(args, "-global", file_global);
-        qmx_add_option(args, "-global", init_global);
+        g_free(qmx_nvram_file);
+        g_free(qmx_nvram_rtc_init);
+        qmx_nvram_file = g_strdup(file);
+        qmx_nvram_rtc_init = g_strdup(rtc_init);
     }
     return true;
 }
@@ -602,7 +623,7 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
     }
 
     if (!id && !strcmp(family, "nvram")) {
-        return qmx_translate_nvram(args, value, qmx_dir, !overridden, errp);
+        return qmx_translate_nvram(value, qmx_dir, !overridden, errp);
     }
 
     if (!id) {
@@ -663,10 +684,7 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
         props = qmx_build_properties(value, id, true, true, qmx_dir,
                                      &file, NULL, NULL, errp);
         if (props && !overridden) {
-            g_autofree char *escaped_id = qmx_escape_qemu_value(id);
-            g_autofree char *tagged =
-                g_strdup_printf("%s,qmx-object=%s", props, escaped_id);
-            qmx_add_option(args, "-drive", tagged);
+            qmx_add_option(args, "-drive", props);
             if (file) {
                 g_hash_table_replace(qmx_drive_paths, g_strdup(id),
                                      g_strdup(file));
