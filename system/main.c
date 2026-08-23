@@ -25,6 +25,8 @@
 #include "qemu/osdep.h"
 #include "qemu-main.h"
 #include "qemu/main-loop.h"
+#include "qemu/qmx.h"
+#include "qemu/error-report.h"
 #include "system/replay.h"
 #include "system/system.h"
 
@@ -68,6 +70,13 @@ int (*qemu_main)(void) = os_darwin_cfrunloop_main;
 
 int main(int argc, char **argv)
 {
+    Error *err = NULL;
+
+    if (!qmx_expand_argv(&argc, &argv, &err)) {
+        error_report_err(err);
+        return EXIT_FAILURE;
+    }
+
     qemu_init(argc, argv);
 
     /*
