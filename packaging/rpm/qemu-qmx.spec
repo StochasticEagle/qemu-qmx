@@ -1,4 +1,5 @@
 Name:           qemu-qmx
+Epoch:          2
 Version:        11.1.50
 Release:        0.9.0.beta1%{?dist}
 Summary:        QEMU x86 system emulator with QMX machine configuration support
@@ -6,9 +7,9 @@ License:        GPL-2.0-or-later
 URL:            https://github.com/StochasticEagle/qemu-qmx
 Source0:        https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/qmx-v0.9.0-beta.1.tar.gz
 
-Provides:       qemu-system-x86 = %{version}-%{release}
+Provides:       qemu-system-x86 = 2:%{version}-%{release}
 Conflicts:      qemu-system-x86
-Obsoletes:      qemu-system-x86 < %{version}-%{release}
+Obsoletes:      qemu-system-x86 < 2:%{version}-%{release}
 Requires:       qemu-common
 
 BuildRequires:  gcc
@@ -82,5 +83,5 @@ install -Dpm0644 COPYING \
 %{_bindir}/qemu-system-x86_64
 
 %changelog
-* Sun Aug 23 2026 QEMU-QMX Project <noreply@github.com> - 11.1.50-0.9.0.beta1
+* Sun Aug 23 2026 QEMU-QMX Project <noreply@github.com> - 2:11.1.50-0.9.0.beta1
 - Initial QMX 0.9 beta replacement package
