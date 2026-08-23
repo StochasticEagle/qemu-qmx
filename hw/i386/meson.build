@@ -31,6 +31,7 @@ i386_ss.add(when: 'CONFIG_PC', if_true: files(
   'x86-common.c',
   'pc.c',
   'pc_sysfw.c',
+  'qmx-cmos.c',
   'acpi-build.c',
   'port92.c'))
 i386_ss.add(when: 'CONFIG_X86_FW_OVMF', if_true: files('pc_sysfw_ovmf.c'),

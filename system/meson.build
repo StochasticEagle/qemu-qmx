@@ -21,6 +21,7 @@ system_ss.add(files(
   'physmem.c',
   'physmem-qmp-cmds.c',
   'qdev-monitor.c',
+  'qmx.c',
   'qtest.c',
   'rtc.c',
   'runstate-action.c',

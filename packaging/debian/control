@@ -1,0 +1,37 @@
+Source: qemu-qmx
+Section: otherosfs
+Priority: optional
+Maintainer: QEMU-QMX Project <noreply@github.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ gcc,
+ libglib2.0-dev,
+ libpixman-1-dev,
+ libslirp-dev,
+ libsdl2-dev,
+ meson,
+ ninja-build,
+ pkg-config,
+ python3,
+ zlib1g-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/StochasticEagle/qemu-qmx
+Rules-Requires-Root: no
+
+Package: qemu-qmx
+Architecture: amd64
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ qemu-system-common,
+ qemu-system-data,
+ seabios
+Provides: qemu-system-x86 (= ${binary:Version})
+Conflicts: qemu-system-x86
+Replaces: qemu-system-x86
+Description: QEMU x86 system emulator with QMX configuration support
+ QEMU-QMX provides the standard qemu-system-i386 and
+ qemu-system-x86_64 executables with QMX machine configuration support.
+ .
+ This package intentionally replaces the distribution qemu-system-x86
+ package rather than installing a side-by-side emulator binary.
