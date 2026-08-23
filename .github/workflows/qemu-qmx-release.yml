@@ -114,10 +114,14 @@ jobs:
           install -Dm0644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md stage-release/usr/share/doc/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
           install -Dm0644 "docs/releases/QMX_${{ inputs.version }}.md" "stage-release/usr/share/doc/qemu-qmx/QMX_${{ inputs.version }}.md"
           install -Dm0644 COPYING stage-release/usr/share/licenses/qemu-qmx/COPYING
+          install -Dm0644 packaging/linux/qemu-qmx.desktop stage-release/usr/share/applications/qemu-qmx.desktop
+          install -Dm0644 packaging/linux/qemu-qmx.xml stage-release/usr/share/mime/packages/qemu-qmx.xml
           test -x stage-release/usr/bin/qemu-system-x86_64
           test -x stage-release/usr/bin/qemu-system-i386
           test -f stage-release/usr/share/qemu/bios.bin
           test -f stage-release/usr/share/qemu/bios-256k.bin
+          test -f stage-release/usr/share/applications/qemu-qmx.desktop
+          test -f stage-release/usr/share/mime/packages/qemu-qmx.xml
 
       - name: Package Debian / apt
         shell: bash
