@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-qemu-qmx;
+Actions=verifyQmx;
+X-KDE-Priority=TopLevel
+
+[Desktop Action verifyQmx]
+Name=Verify QMX Configuration
+Exec=/usr/libexec/qemu-qmx/qmx-verify-gui %f
