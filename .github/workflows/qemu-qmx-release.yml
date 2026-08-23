@@ -173,8 +173,9 @@ jobs:
                 "Conflicts: qemu-system-x86, qemu-system-common, qemu-system-data, seabios" \
                 "Replaces: qemu-system-x86, qemu-system-common, qemu-system-data, seabios" \
                 "Description: QEMU x86 system emulator with QMX configuration support" \
-                " QEMU-QMX replaces the distribution QEMU x86 runtime, shared data," \
-                " and SeaBIOS packages with the QMX-enabled build." \
+                " QEMU-QMX is a system replacement for the distribution x86 QEMU runtime," \
+                " shared data, and SeaBIOS packages. It installs the QMX-enabled build at" \
+                " the standard QEMU system paths rather than alongside the distro build." \
                 > /pkg/DEBIAN/control
               dpkg-deb --root-owner-group --build /pkg "/out/qemu-qmx_${VERSION}_amd64.deb"
               sha256sum /out/*.deb > /out/SHA256SUMS-debian
@@ -207,16 +208,20 @@ jobs:
                 "Provides:       qemu-system-x86" \
                 "Provides:       qemu-system-x86-core" \
                 "Provides:       qemu-common" \
+                "Provides:       seabios-bin" \
                 "Conflicts:      qemu-system-x86" \
                 "Conflicts:      qemu-system-x86-core" \
                 "Conflicts:      qemu-common" \
+                "Conflicts:      seabios-bin" \
                 "Obsoletes:      qemu-system-x86 < 2:%{version}-%{release}" \
                 "Obsoletes:      qemu-system-x86-core < 2:%{version}-%{release}" \
                 "Obsoletes:      qemu-common < 2:%{version}-%{release}" \
+                "Obsoletes:      seabios-bin" \
                 "" \
                 "%description" \
-                "QEMU-QMX replaces the distribution QEMU x86 runtime and shared data with" \
-                "one QMX-enabled payload built once for this release." \
+                "QEMU-QMX is a system replacement for the distribution x86 QEMU runtime," \
+                "shared data, and SeaBIOS firmware. It installs the QMX-enabled payload" \
+                "at the standard QEMU system paths rather than alongside the distro build." \
                 "" \
                 "%prep" \
                 "mkdir payload" \
