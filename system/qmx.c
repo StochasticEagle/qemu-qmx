@@ -300,8 +300,7 @@ static char *qmx_build_properties(const char *value, const char *id,
         }
         if (!eq) {
             if (have_bare || i != 0) {
-                error_setg(errp,
-                           "bare property-list value is only valid as the first item");
+                error_setg(errp, "property '%s' is missing '='", field);
                 goto fail;
             }
             have_bare = true;
@@ -319,6 +318,10 @@ static char *qmx_build_properties(const char *value, const char *id,
         g_strstrip(eq + 1);
         if (!qmx_is_ident(field)) {
             error_setg(errp, "invalid property name '%s'", field);
+            goto fail;
+        }
+        if (!eq[1]) {
+            error_setg(errp, "empty value for property '%s'", field);
             goto fail;
         }
         if (g_hash_table_contains(seen, field)) {
@@ -748,7 +751,8 @@ static GPtrArray *qmx_parse_file(const char *filename, GHashTable *overrides,
 
         eq = strchr(line, '=');
         if (!eq) {
-            error_setg(errp, "%s:%d: expected 'key = value'", absolute, i + 1);
+            error_setg(errp, "%s:%d: missing '='; expected 'key = value'",
+                       absolute, i + 1);
             goto fail;
         }
         *eq = '\0';
