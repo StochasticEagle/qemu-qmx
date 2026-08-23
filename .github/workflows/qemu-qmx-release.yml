@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -63,7 +63,7 @@ jobs:
           sha256sum "qemu-qmx-${version}-source.tar.gz" > "qemu-qmx-${version}-source.tar.gz.sha256"
 
       - name: Upload source archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qemu-qmx-source
           path: |
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -97,7 +97,7 @@ jobs:
           sha256sum artifacts/debian/*.deb > artifacts/debian/SHA256SUMS-debian
 
       - name: Upload Debian package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qemu-qmx-debian
           path: artifacts/debian/*
@@ -109,7 +109,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -143,7 +143,7 @@ jobs:
           sha256sum artifacts/rpm/*.rpm > artifacts/rpm/SHA256SUMS-rpm
 
       - name: Upload RPM package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qemu-qmx-rpm
           path: artifacts/rpm/*
@@ -155,7 +155,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -188,7 +188,7 @@ jobs:
           sha256sum "$GITHUB_WORKSPACE"/artifacts/arch/qemu-qmx-*.pkg.tar.* > "$GITHUB_WORKSPACE/artifacts/arch/SHA256SUMS-arch"
 
       - name: Upload Arch package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qemu-qmx-arch
           path: artifacts/arch/*
@@ -204,10 +204,10 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release
           merge-multiple: true
