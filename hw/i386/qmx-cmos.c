@@ -156,14 +156,6 @@ static void qmx_cmos_snapshot(QmxCmosState *state,
     }
 }
 
-static bool qmx_cmos_changed(QmxCmosState *state)
-{
-    uint8_t current[QMX_CMOS_SIZE];
-
-    qmx_cmos_snapshot(state, current);
-    return memcmp(state->last, current, QMX_CMOS_SIZE) != 0;
-}
-
 static bool qmx_cmos_write(QmxCmosState *state, bool force)
 {
     g_autoptr(GError) gerr = NULL;
