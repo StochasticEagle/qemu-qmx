@@ -13,6 +13,14 @@ qemu-system-x86_64 machine.qmx
 qemu-system-x86_64 -qmx machine.qmx
 ```
 
+A parse/translation-only validation mode is also required:
+
+```text
+qemu-system-x86_64 -qmx-check machine.qmx
+```
+
+`-qmx-check` must validate QMX syntax, QMX family/property semantics, and QMX-to-QEMU argument translation without creating or starting a virtual machine.
+
 ## 2. Required grammar
 
 The initial implementation must parse the compact QEMU-native grammar:
@@ -29,20 +37,39 @@ Duplicate scalar keys and duplicate object keys are fatal errors.
 
 ## 3. Required parameter families
 
-The initial implementation must support these families generically:
+The implementation must support these scalar families:
 
+- `name`
+- `description`
 - `machine`
 - `memory`
 - `accel`
 - `cpu`
 - `display`
 - `vga`
+- `bios`
+- `boot`
+- `serial`
+- `parallel`
+- `monitor`
+- `smp`
+- `rtc`
+- `usb`
+- `nvram`
+
+It must support these named object families:
+
 - `audiodev.<id>`
 - `device.<id>`
-- `boot`
 - `drive.<id>`
 - `fw_cfg.<id>`
-- `nvram`
+- `netdev.<id>`
+- `chardev.<id>`
+- `object.<id>`
+
+`description` is frontend metadata only. It must be accepted by QEMU but must not alter machine runtime semantics.
+
+`usb` accepts `on` or `off`; `on` maps to QEMU's legacy `-usb` switch and `off` emits no switch.
 
 For mapped QEMU families, values should be handed to QEMU's existing configuration parsers and device models wherever practical. The QMX implementation must not impose a separate whitelist when QEMU can validate the value directly.
 
@@ -81,6 +108,7 @@ using:
 ```text
 qmx = 1
 name = "Windows 98 SE"
+description = "Windows 98 SE virtual machine"
 
 machine = pc,acpi=off
 memory = 384M
@@ -115,6 +143,9 @@ The suffix in a named QMX object is a stable QMX-local identifier:
 drive.win98hdd = ...
 device.hdd = ...
 audiodev.snd0 = ...
+netdev.net0 = user
+chardev.console = null
+object.mem0 = memory-backend-ram,size=128M
 ```
 
 Where the corresponding QEMU option requires an `id`, QMX should normally derive it from the object suffix rather than requiring duplicated `id=` syntax.
@@ -164,7 +195,15 @@ If the writable file does not exist, QEMU should create it from initialized mach
 
 Guest writes must update normal emulated CMOS, and persistent changes should be flushed promptly and on normal QEMU shutdown.
 
-## 10. Conversion requirement
+## 10. CLI precedence
+
+Traditional QEMU command-line options override QMX values.
+
+Scalar QMX settings are suppressed when their corresponding CLI option is explicitly present. For named object families, a CLI object suppresses only the QMX object with the same ID; unrelated QMX objects remain active. `fw_cfg` conflicts are resolved by `name=`.
+
+This applies to the required scalar and object families, including `netdev`, `chardev`, and `object`.
+
+## 11. Conversion requirement
 
 The parser should produce a simple representation equivalent to tuples of:
 
