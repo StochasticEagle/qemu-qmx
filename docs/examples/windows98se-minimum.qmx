@@ -8,6 +8,9 @@ cpu = pentium3
 display = sdl
 vga = cirrus
 
+# Optional firmware override; relative paths are resolved from this QMX file.
+# bios = "bios.bin"
+
 audiodev.snd0 = sdl
 device.sound = sb16,audiodev=snd0
 
@@ -18,7 +21,5 @@ device.hdd = ide-hd,drive=win98hdd,bus=ide.0,unit=0
 
 drive.win98cd = file="Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
 device.cdrom = ide-cd,drive=win98cd,bus=ide.1,unit=0
-
-fw_cfg.setup = name="opt/seabios/setup",string="1"
 
 nvram = file="machine.cmos",format=cmos128,rtc_init=time0
