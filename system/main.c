@@ -77,6 +77,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    if (qmx_check_requested()) {
+        printf("QMX configuration is valid\n");
+        return EXIT_SUCCESS;
+    }
+
     qemu_init(argc, argv);
 
     if (!qmx_runtime_init(&err)) {
