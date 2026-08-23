@@ -159,7 +159,7 @@ jobs:
             debian:trixie \
             bash -euxo pipefail -c '
               apt-get update
-              apt-get install -y dpkg-dev libc6 libglib2.0-0t64 libpixman-1-0 libslirp0 libsdl2-2.0-0 zlib1g
+              apt-get install -y dpkg-dev libc6 libglib2.0-0t64 libpixman-1-0 libslirp0 libsdl2-2.0-0 libsndio7.0 zlib1g
               mkdir -p /pkg/DEBIAN /tmp/debian
               cp -a /stage/. /pkg/
               printf "%s\n" \
