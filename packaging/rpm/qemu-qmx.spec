@@ -5,7 +5,7 @@ Release:        0.9.0.beta1%{?dist}
 Summary:        QEMU x86 system emulator with QMX machine configuration support
 License:        GPL-2.0-or-later
 URL:            https://github.com/StochasticEagle/qemu-qmx
-Source0:        https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/qmx-v0.9.0-beta.1.tar.gz
+Source0:        https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/qemu-qmx-v0.9.0-beta.1.tar.gz
 
 Provides:       qemu-system-x86 = 2:%{version}-%{release}
 Provides:       qemu-system-x86-core = 2:%{version}-%{release}
@@ -18,6 +18,8 @@ Requires:       seabios-bin
 Requires:       seavgabios-bin
 
 BuildRequires:  gcc
+BuildRequires:  binutils
+BuildRequires:  make
 BuildRequires:  glib2-devel
 BuildRequires:  git
 BuildRequires:  libslirp-devel
@@ -36,9 +38,11 @@ qemu-system-x86-core packages and installs the standard qemu-system-i386,
 qemu-system-x86_64, and qemu-kvm executable names.
 
 %prep
-%autosetup -n qemu-qmx-qmx-v0.9.0-beta.1
+%autosetup -n qemu-qmx-qemu-qmx-v0.9.0-beta.1
 
 %build
+make -C roms/seabios
+
 mkdir build-package
 cd build-package
 ../configure \
@@ -67,6 +71,8 @@ install -Dpm0755 build-package/qemu-system-x86_64 \
 install -Dpm0755 build-package/qemu-system-i386 \
     %{buildroot}%{_bindir}/qemu-system-i386
 ln -s qemu-system-x86_64 %{buildroot}%{_bindir}/qemu-kvm
+install -Dpm0644 roms/seabios/out/bios.bin \
+    %{buildroot}%{_datadir}/qemu/bios-qmx.bin
 
 for rom in kvmvapic.bin linuxboot.bin linuxboot_dma.bin multiboot.bin multiboot_dma.bin pvh.bin qboot.rom; do
     if test -f pc-bios/$rom; then
@@ -94,6 +100,7 @@ install -Dpm0644 COPYING \
 %{_bindir}/qemu-kvm
 %{_bindir}/qemu-system-i386
 %{_bindir}/qemu-system-x86_64
+%{_datadir}/qemu/bios-qmx.bin
 %{_datadir}/qemu/kvmvapic.bin
 %{_datadir}/qemu/linuxboot*.bin
 %{_datadir}/qemu/multiboot*.bin
