@@ -1,29 +1,24 @@
-#qmx: version=1
-#qmx: profile=qemu
-#qmx: name="Windows 98 SE"
+qmx = 1
+name = "Windows 98 SE"
 
-#qemu: display=sdl
-#qemu: accel=kvm
-#qemu: machine=pc
-#qemu: acpi=off
+machine = pc,acpi=off
+memory = 384M
+accel = kvm
+cpu = pentium3
+display = sdl
+vga = cirrus
 
-memory: guest=384, host=384
-cpu: model=p3_katmai, count=1
-vga: extension=cirrus
+audiodev.snd0 = sdl
+device.sound = sb16,audiodev=snd0
 
-#qemu: audiodev.snd0.driver=sdl
-#qemu: device.sb16.audiodev=snd0
+boot = menu=on,order=ca
 
-boot: cdrom, disk
+drive.win98hdd = file="windows98se.qcow2",format=qcow2,if=none
+device.hdd = ide-hd,drive=win98hdd,bus=ide.0,unit=0
 
-ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
-ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15
+drive.win98cd = file="Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
+device.cdrom = ide-cd,drive=win98cd,bus=ide.1,unit=0
 
-ata0-master: type=disk, path="windows98se.qcow2"
-#qemu: disk-format.ata0-master=qcow2
+fw_cfg.setup = name="opt/seabios/setup",string="1"
 
-ata1-master: type=cdrom, path="Windows98_SE.iso", status=inserted
-#qemu: disk-format.ata1-master=raw
-#qemu: readonly.ata1-master=on
-
-#qemu: fw_cfg.name="opt/seabios/setup", string="1"
+nvram = file="machine.cmos",format=cmos128,rtc_init=time0
