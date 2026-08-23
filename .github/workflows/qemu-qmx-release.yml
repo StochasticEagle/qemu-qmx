@@ -130,9 +130,11 @@ jobs:
           version="$(cat QMX_VERSION)"
           tag="qemu-qmx-v${version}"
           mkdir -p "$PWD/rpmbuild/SOURCES" "$PWD/artifacts/rpm"
+          source_archive="$RUNNER_TEMP/${tag}.tar.gz"
           tar --exclude-vcs --exclude='./build*' \
             --transform="s,^\./,qemu-qmx-${tag}/," \
-            -czf "$PWD/rpmbuild/SOURCES/${tag}.tar.gz" .
+            -czf "$source_archive" .
+          cp "$source_archive" "$PWD/rpmbuild/SOURCES/${tag}.tar.gz"
           tar -C roms \
             --exclude-vcs \
             --transform="s,^seabios/,seabios-setupmenu-${SEABIOS_COMMIT}/," \
