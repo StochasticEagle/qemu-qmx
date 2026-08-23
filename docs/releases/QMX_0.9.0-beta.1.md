@@ -35,10 +35,18 @@ The following are intentionally not part of the 0.9 beta scope:
 - canonical argv conversion/introspection output;
 - a separate `qmx-info` or dump utility.
 
-## Packaging policy
+## Linux packaging
 
-The Linux packages under `packaging/` are replacement packages, not side-by-side variants. They install the normal QEMU x86 system-emulator executable names and conflict with/replace the distribution-provided `qemu-system-x86` package where the package format supports those relationships.
+Initial native packaging definitions are included for:
 
-Installing QEMU-QMX therefore replaces the stock x86 QEMU system-emulator package. To return to the distribution build, remove the QMX package and reinstall the distribution's `qemu-system-x86` package.
+- Fedora/RPM/dnf: `packaging/rpm/qemu-qmx.spec`
+- Debian/Ubuntu/apt: `packaging/debian/`
+- Arch Linux/pacman: `packaging/arch/PKGBUILD`
+
+These packages are replacements, not side-by-side variants. They install the normal QEMU x86 system-emulator executable names and provide/conflict with/replace the distribution-provided x86 QEMU package. Fedora additionally replaces `qemu-system-x86-core`, which owns the actual emulator binaries there.
+
+Installing QEMU-QMX therefore replaces the stock x86 QEMU system emulator. To return to the distribution build, remove `qemu-qmx` and reinstall the distribution's x86 QEMU system-emulator package.
+
+The QMX parser and integration suites have been validated against the release-candidate QEMU build. The distro packaging recipes themselves are new in this release and require their first native RPM/DEB/Arch package-build validation before prebuilt binary packages are published.
 
 QEMU's upstream `VERSION` remains unchanged. QMX has its own release version in `QMX_VERSION` so QEMU build/version semantics are not overwritten.
