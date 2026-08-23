@@ -96,6 +96,11 @@ jobs:
             --disable-tools \
             --disable-guest-agent
           ninja
+          cd ..
+          cc -O2 -Wall -Wextra \
+            tools/qmx-verify-gui.c \
+            -o build-release/qmx-verify-gui \
+            $(pkg-config --cflags --libs sdl2)
 
       - name: Test the single build
         shell: bash
@@ -107,6 +112,7 @@ jobs:
         shell: bash
         run: |
           DESTDIR="$GITHUB_WORKSPACE/stage-release" ninja -C build-release install
+          install -Dm0755 build-release/qmx-verify-gui stage-release/usr/libexec/qemu-qmx/qmx-verify-gui
           install -Dm0644 roms/seabios/out/bios.bin stage-release/usr/share/qemu/bios.bin
           install -Dm0644 roms/seabios/out/bios.bin stage-release/usr/share/qemu/bios-256k.bin
           install -Dm0644 QMX_VERSION stage-release/usr/share/doc/qemu-qmx/QMX_VERSION
@@ -115,13 +121,18 @@ jobs:
           install -Dm0644 "docs/releases/QMX_${{ inputs.version }}.md" "stage-release/usr/share/doc/qemu-qmx/QMX_${{ inputs.version }}.md"
           install -Dm0644 COPYING stage-release/usr/share/licenses/qemu-qmx/COPYING
           install -Dm0644 packaging/linux/qemu-qmx.desktop stage-release/usr/share/applications/qemu-qmx.desktop
+          install -Dm0644 packaging/linux/qemu-qmx-verify.desktop stage-release/usr/share/applications/qemu-qmx-verify.desktop
           install -Dm0644 packaging/linux/qemu-qmx.xml stage-release/usr/share/mime/packages/qemu-qmx.xml
+          install -Dm0644 packaging/linux/qemu-qmx-verify-kde.desktop stage-release/usr/share/kio/servicemenus/qemu-qmx-verify.desktop
           test -x stage-release/usr/bin/qemu-system-x86_64
           test -x stage-release/usr/bin/qemu-system-i386
+          test -x stage-release/usr/libexec/qemu-qmx/qmx-verify-gui
           test -f stage-release/usr/share/qemu/bios.bin
           test -f stage-release/usr/share/qemu/bios-256k.bin
           test -f stage-release/usr/share/applications/qemu-qmx.desktop
+          test -f stage-release/usr/share/applications/qemu-qmx-verify.desktop
           test -f stage-release/usr/share/mime/packages/qemu-qmx.xml
+          test -f stage-release/usr/share/kio/servicemenus/qemu-qmx-verify.desktop
 
       - name: Package Debian / apt
         shell: bash
@@ -149,7 +160,7 @@ jobs:
                 "Description: QEMU x86 system emulator with QMX configuration support" \
                 > /tmp/debian/control
               cd /tmp
-              deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 | sed -n "s/^shlibs:Depends=//p")"
+              deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 -e/pkg/usr/libexec/qemu-qmx/qmx-verify-gui | sed -n "s/^shlibs:Depends=//p")"
               printf "%s\n" \
                 "Package: qemu-qmx" \
                 "Version: 1:11.1.50+qmx0.9.0~beta1-1" \
