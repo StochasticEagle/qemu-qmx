@@ -8,6 +8,7 @@
 #define QEMU_QMX_H
 
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 
 typedef bool (*QmxNvramBackendInit)(const char *file,
                                     const char *rtc_init,
