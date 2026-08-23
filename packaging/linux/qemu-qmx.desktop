@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=QEMU-QMX Virtual Machine
+Comment=Open a QMX virtual machine configuration
+Exec=qemu-system-x86_64 -qmx %f
+TryExec=qemu-system-x86_64
+Terminal=false
+NoDisplay=true
+MimeType=application/x-qemu-qmx;
