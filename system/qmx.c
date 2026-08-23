@@ -73,18 +73,10 @@ static char *qmx_unquote(const char *text, Error **errp)
             return NULL;
         }
         switch (s[i]) {
-        case '\\':
-            g_string_append_c(out, '\\');
-            break;
-        case '"':
-            g_string_append_c(out, '"');
-            break;
-        case 'n':
-            g_string_append_c(out, '\n');
-            break;
-        case 't':
-            g_string_append_c(out, '\t');
-            break;
+        case '\\': g_string_append_c(out, '\\'); break;
+        case '"': g_string_append_c(out, '"'); break;
+        case 'n': g_string_append_c(out, '\n'); break;
+        case 't': g_string_append_c(out, '\t'); break;
         default:
             error_setg(errp, "unsupported escape sequence \\%c", s[i]);
             g_string_free(out, true);
@@ -104,7 +96,6 @@ static GPtrArray *qmx_split_fields(const char *value, Error **errp)
 
     for (p = value; ; p++) {
         char c = *p;
-
         if (escaped) {
             if (c == '\0') {
                 error_setg(errp, "unterminated escape sequence");
@@ -150,7 +141,6 @@ static GPtrArray *qmx_split_fields(const char *value, Error **errp)
         }
         g_string_append_c(field, c);
     }
-
     return fields;
 }
 
@@ -158,8 +148,6 @@ static char *qmx_escape_qemu_value(const char *value)
 {
     GString *out = g_string_new(NULL);
     const char *p;
-
-    /* QemuOpts uses doubled commas for a literal comma in a value. */
     for (p = value; *p; p++) {
         if (*p == ',') {
             g_string_append_c(out, ',');
@@ -185,18 +173,15 @@ static char *qmx_build_properties(const char *value, const char *id,
     GString *out;
     bool have_id = false;
     guint i;
-
     if (!fields) {
         return NULL;
     }
-
     out = g_string_new(NULL);
     for (i = 0; i < fields->len; i++) {
         char *field = g_ptr_array_index(fields, i);
         char *eq = strchr(field, '=');
         g_autofree char *decoded = NULL;
         g_autofree char *escaped = NULL;
-
         if (i) {
             g_string_append_c(out, ',');
         }
@@ -209,7 +194,6 @@ static char *qmx_build_properties(const char *value, const char *id,
             g_string_append(out, escaped);
             continue;
         }
-
         *eq = '\0';
         g_strstrip(field);
         g_strstrip(eq + 1);
@@ -232,7 +216,6 @@ static char *qmx_build_properties(const char *value, const char *id,
         escaped = qmx_escape_qemu_value(decoded);
         g_string_append_printf(out, "%s=%s", field, escaped);
     }
-
     if (inject_id && !have_id) {
         g_autofree char *escaped_id = qmx_escape_qemu_value(id);
         if (out->len) {
@@ -241,7 +224,6 @@ static char *qmx_build_properties(const char *value, const char *id,
         g_string_append_printf(out, "id=%s", escaped_id);
     }
     return g_string_free(out, false);
-
 fail:
     g_string_free(out, true);
     return NULL;
@@ -252,8 +234,7 @@ static void qmx_add_arg(GPtrArray *args, const char *arg)
     g_ptr_array_add(args, g_strdup(arg));
 }
 
-static void qmx_add_option(GPtrArray *args, const char *option,
-                           const char *value)
+static void qmx_add_option(GPtrArray *args, const char *option, const char *value)
 {
     qmx_add_arg(args, option);
     qmx_add_arg(args, value);
@@ -271,9 +252,7 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
 
     if (!strcmp(family, "qmx") && !id) {
         scalar = qmx_unquote(value, errp);
-        if (!scalar) {
-            return false;
-        }
+        if (!scalar) return false;
         if (strcmp(scalar, "1")) {
             error_setg(errp, "unsupported QMX major version '%s'", scalar);
             return false;
@@ -283,15 +262,8 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
     }
 
     if (!id && !strcmp(family, "nvram")) {
-        props = qmx_build_properties(value, NULL, false, true,
-                                     qmx_dir, errp);
-        if (!props) {
-            return false;
-        }
-        /*
-         * The QMX text grammar is usable before the cmos128 backing work is
-         * complete.  Do not silently imply persistence during this phase.
-         */
+        props = qmx_build_properties(value, NULL, false, true, qmx_dir, errp);
+        if (!props) return false;
         fprintf(stderr,
                 "qemu: warning: QMX nvram persistence is not implemented "
                 "yet; using volatile CMOS\n");
@@ -300,9 +272,7 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
 
     if (!id) {
         scalar = qmx_unquote(value, errp);
-        if (!scalar) {
-            return false;
-        }
+        if (!scalar) return false;
         if (!strcmp(family, "name")) {
             qmx_add_option(args, "-name", scalar);
         } else if (!strcmp(family, "machine")) {
@@ -317,6 +287,9 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
             qmx_add_option(args, "-display", scalar);
         } else if (!strcmp(family, "vga")) {
             qmx_add_option(args, "-vga", scalar);
+        } else if (!strcmp(family, "bios")) {
+            g_autofree char *resolved = qmx_resolve_path(qmx_dir, scalar);
+            qmx_add_option(args, "-bios", resolved);
         } else if (!strcmp(family, "boot")) {
             qmx_add_option(args, "-boot", scalar);
         } else {
@@ -333,29 +306,20 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
 
     if (!strcmp(family, "audiodev")) {
         props = qmx_build_properties(value, id, true, false, qmx_dir, errp);
-        if (props) {
-            qmx_add_option(args, "-audiodev", props);
-        }
+        if (props) qmx_add_option(args, "-audiodev", props);
     } else if (!strcmp(family, "device")) {
         props = qmx_build_properties(value, id, true, false, qmx_dir, errp);
-        if (props) {
-            qmx_add_option(args, "-device", props);
-        }
+        if (props) qmx_add_option(args, "-device", props);
     } else if (!strcmp(family, "drive")) {
         props = qmx_build_properties(value, id, true, true, qmx_dir, errp);
-        if (props) {
-            qmx_add_option(args, "-drive", props);
-        }
+        if (props) qmx_add_option(args, "-drive", props);
     } else if (!strcmp(family, "fw_cfg")) {
         props = qmx_build_properties(value, id, false, false, qmx_dir, errp);
-        if (props) {
-            qmx_add_option(args, "-fw_cfg", props);
-        }
+        if (props) qmx_add_option(args, "-fw_cfg", props);
     } else {
         error_setg(errp, "unsupported QMX object family '%s'", family);
         return false;
     }
-
     return props != NULL;
 }
 
@@ -373,25 +337,19 @@ static GPtrArray *qmx_parse_file(const char *filename, Error **errp)
     int i;
 
     if (!g_file_get_contents(absolute, &contents, &len, &gerr)) {
-        error_setg(errp, "cannot open QMX file '%s': %s",
-                   absolute, gerr->message);
+        error_setg(errp, "cannot open QMX file '%s': %s", absolute, gerr->message);
         return NULL;
     }
 
     args = g_ptr_array_new_with_free_func(g_free);
     seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     lines = g_strsplit(contents, "\n", -1);
-
     for (i = 0; lines[i]; i++) {
         char *line = g_strstrip(lines[i]);
         char *eq;
         char *key;
         char *value;
-
-        if (!line[0] || line[0] == '#') {
-            continue;
-        }
-
+        if (!line[0] || line[0] == '#') continue;
         eq = strchr(line, '=');
         if (!eq) {
             error_setg(errp, "%s:%d: expected 'key = value'", absolute, i + 1);
@@ -400,37 +358,29 @@ static GPtrArray *qmx_parse_file(const char *filename, Error **errp)
         *eq = '\0';
         key = g_strstrip(line);
         value = g_strstrip(eq + 1);
-
         if (!qmx_is_key(key)) {
-            error_setg(errp, "%s:%d: invalid QMX key '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: invalid QMX key '%s'", absolute, i + 1, key);
             goto fail;
         }
         if (!value[0]) {
-            error_setg(errp, "%s:%d: empty value for '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: empty value for '%s'", absolute, i + 1, key);
             goto fail;
         }
         if (g_hash_table_contains(seen, key)) {
-            error_setg(errp, "%s:%d: duplicate QMX assignment '%s'",
-                       absolute, i + 1, key);
+            error_setg(errp, "%s:%d: duplicate QMX assignment '%s'", absolute, i + 1, key);
             goto fail;
         }
         g_hash_table_add(seen, g_strdup(key));
-
-        if (!qmx_translate_assignment(args, key, value, dir,
-                                      &version_seen, errp)) {
+        if (!qmx_translate_assignment(args, key, value, dir, &version_seen, errp)) {
             error_prepend(errp, "%s:%d: ", absolute, i + 1);
             goto fail;
         }
     }
-
     if (!version_seen) {
         error_setg(errp, "%s: missing required 'qmx = 1' declaration", absolute);
         goto fail;
     }
     return args;
-
 fail:
     g_ptr_array_free(args, true);
     return NULL;
@@ -465,45 +415,32 @@ bool qmx_expand_argv(int *argc, char ***argv, Error **errp)
             i++;
         }
     }
-
-    if (!explicit_qmx && *argc == 2 && oldv[1][0] != '-' &&
-        qmx_has_suffix(oldv[1])) {
+    if (!explicit_qmx && *argc == 2 && oldv[1][0] != '-' && qmx_has_suffix(oldv[1])) {
         qmx_file = oldv[1];
         qmx_index = 1;
         qmx_count = 1;
     }
-
-    if (!qmx_count) {
-        return true;
-    }
+    if (!qmx_count) return true;
     if (qmx_count != 1) {
         error_setg(errp, "exactly one QMX file may be specified");
         return false;
     }
-
     qmx_args = qmx_parse_file(qmx_file, errp);
-    if (!qmx_args) {
-        return false;
-    }
-
+    if (!qmx_args) return false;
     newv = g_ptr_array_new();
     qmx_add_arg(newv, oldv[0]);
     for (i = 1; i < *argc; i++) {
         guint j;
-
         if (i == qmx_index) {
             for (j = 0; j < qmx_args->len; j++) {
                 qmx_add_arg(newv, g_ptr_array_index(qmx_args, j));
             }
-            if (explicit_qmx) {
-                i++;
-            }
+            if (explicit_qmx) i++;
             continue;
         }
         qmx_add_arg(newv, oldv[i]);
     }
     g_ptr_array_add(newv, NULL);
-
     *argc = newv->len - 1;
     *argv = (char **)g_ptr_array_free(newv, false);
     return true;
