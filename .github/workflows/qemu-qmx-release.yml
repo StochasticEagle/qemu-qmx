@@ -230,6 +230,7 @@ jobs:
             archlinux:base-devel \
             bash -euxo pipefail -c '
               pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed glib2 pixman zlib libslirp sdl2-compat
               useradd -m builder
               mkdir -p /build
               printf "%s\n" \
