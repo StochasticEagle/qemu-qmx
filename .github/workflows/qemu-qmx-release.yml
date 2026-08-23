@@ -235,13 +235,13 @@ jobs:
               tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
               find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
               qemu_packages="$(
-                dnf repoquery --available --qf "%{name}" 2>/dev/null \
+                dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>/dev/null \
                   | awk '\''/^qemu($|-)/ && $0 != "qemu-qmx"'\'' \
                   | sort -u
               )"
               if [[ -z "$qemu_packages" ]]; then
                 echo "Fedora repository query returned no qemu-* packages; refusing to build incomplete replacement metadata." >&2
-                dnf repoquery --available --qf "%{name}" 2>&1 | grep -E "^qemu($|-)" >&2 || true
+                dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>&1 >&2 || true
                 exit 1
               fi
               {
