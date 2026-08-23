@@ -257,8 +257,8 @@ jobs:
                 "license=(\"GPL-2.0-or-later\")" \
                 "depends=(\"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
                 "provides=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\")" \
-                "conflicts=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\")" \
-                "replaces=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\")" \
+                "conflicts=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\" \"qemu-base\" \"qemu-desktop\" \"qemu-full\" \"qemu-emulators-full\")" \
+                "replaces=(\"qemu-system-x86\" \"qemu-common\" \"qemu-system-x86-firmware\" \"qemu-base\" \"qemu-desktop\" \"qemu-full\" \"qemu-emulators-full\")" \
                 "" \
                 "package() {" \
                 "  cp -a /stage/. \"\$pkgdir/\"" \
