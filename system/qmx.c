@@ -67,7 +67,7 @@ static char *qmx_unquote(const char *text, Error **errp)
             continue;
         }
         i++;
-        if (i + 1 > len) {
+        if (i >= len - 1) {
             error_setg(errp, "unterminated escape sequence");
             g_string_free(out, true);
             return NULL;
@@ -106,6 +106,12 @@ static GPtrArray *qmx_split_fields(const char *value, Error **errp)
         char c = *p;
 
         if (escaped) {
+            if (c == '\0') {
+                error_setg(errp, "unterminated escape sequence");
+                g_string_free(field, true);
+                g_ptr_array_free(fields, true);
+                return NULL;
+            }
             g_string_append_c(field, c);
             escaped = false;
             continue;
@@ -119,6 +125,12 @@ static GPtrArray *qmx_split_fields(const char *value, Error **errp)
             quoted = !quoted;
             g_string_append_c(field, c);
             continue;
+        }
+        if (c == '\0' && quoted) {
+            error_setg(errp, "unterminated quoted string");
+            g_string_free(field, true);
+            g_ptr_array_free(fields, true);
+            return NULL;
         }
         if ((!quoted && c == ',') || c == '\0') {
             char *item = g_string_free(field, false);
@@ -139,11 +151,6 @@ static GPtrArray *qmx_split_fields(const char *value, Error **errp)
         g_string_append_c(field, c);
     }
 
-    if (quoted) {
-        error_setg(errp, "unterminated quoted string");
-        g_ptr_array_free(fields, true);
-        return NULL;
-    }
     return fields;
 }
 
@@ -275,6 +282,22 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
         return true;
     }
 
+    if (!id && !strcmp(family, "nvram")) {
+        props = qmx_build_properties(value, NULL, false, true,
+                                     qmx_dir, errp);
+        if (!props) {
+            return false;
+        }
+        /*
+         * The QMX text grammar is usable before the cmos128 backing work is
+         * complete.  Do not silently imply persistence during this phase.
+         */
+        fprintf(stderr,
+                "qemu: warning: QMX nvram persistence is not implemented "
+                "yet; using volatile CMOS\n");
+        return true;
+    }
+
     if (!id) {
         scalar = qmx_unquote(value, errp);
         if (!scalar) {
@@ -296,15 +319,6 @@ static bool qmx_translate_assignment(GPtrArray *args, const char *key,
             qmx_add_option(args, "-vga", scalar);
         } else if (!strcmp(family, "boot")) {
             qmx_add_option(args, "-boot", scalar);
-        } else if (!strcmp(family, "nvram")) {
-            /*
-             * The text grammar is implemented now; the cmos128 backend is a
-             * separate RTC persistence change.  Keep the development example
-             * runnable, but make the missing persistence impossible to miss.
-             */
-            fprintf(stderr,
-                    "qemu: warning: QMX nvram persistence is not implemented "
-                    "yet; using volatile CMOS\n");
         } else {
             error_setg(errp, "unsupported QMX directive '%s'", key);
             return false;
@@ -352,14 +366,15 @@ static GPtrArray *qmx_parse_file(const char *filename, Error **errp)
     g_autofree char *contents = NULL;
     g_auto(GStrv) lines = NULL;
     g_autoptr(GHashTable) seen = NULL;
+    g_autoptr(GError) gerr = NULL;
     GPtrArray *args;
     gsize len;
     bool version_seen = false;
     int i;
 
-    if (!g_file_get_contents(absolute, &contents, &len, NULL)) {
+    if (!g_file_get_contents(absolute, &contents, &len, &gerr)) {
         error_setg(errp, "cannot open QMX file '%s': %s",
-                   absolute, g_strerror(errno));
+                   absolute, gerr->message);
         return NULL;
     }
 
