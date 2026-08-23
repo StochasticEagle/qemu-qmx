@@ -9,7 +9,13 @@
 
 #include "qapi/error.h"
 
+typedef bool (*QmxNvramBackendInit)(const char *file,
+                                    const char *rtc_init,
+                                    Error **errp);
+
 bool qmx_expand_argv(int *argc, char ***argv, Error **errp);
+bool qmx_runtime_init(Error **errp);
+void qmx_register_nvram_backend(QmxNvramBackendInit initfn);
 
 /* Runtime bookkeeping used only for QMX-defined tolerant media. */
 void qmx_mark_drive_failed(const char *id);
