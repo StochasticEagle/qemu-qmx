@@ -6,7 +6,6 @@ on:
       version:
         description: Release version without the qemu-qmx-v prefix
         required: true
-        default: 0.9.0-beta.1
   push:
     branches:
       - master
@@ -25,7 +24,6 @@ permissions:
   contents: read
 
 env:
-  DEFAULT_VERSION: 0.9.0-beta.1
   SEABIOS_COMMIT: e0b009af38836aa5d1d55713d470721835f03664
 
 jobs:
@@ -243,7 +241,7 @@ jobs:
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             release/* \
-            --notes-file docs/releases/QMX_0.9.0-beta.1.md \
+            --notes-file docs/releases/QMX_${version}.md \
             --prerelease \
             --title "QEMU-QMX ${version} beta" \
             "${target_arguments[@]}"
