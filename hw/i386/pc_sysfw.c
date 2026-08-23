@@ -39,6 +39,7 @@
 #include "target/i386/sev.h"
 
 #define FLASH_SECTOR_SIZE 4096
+#define QMX_DEFAULT_BIOS "bios-qmx.bin"
 
 static void pc_isa_bios_init(PCMachineState *pcms, MemoryRegion *isa_bios,
                              MemoryRegion *rom_memory, MemoryRegion *flash_mem)
@@ -224,7 +225,8 @@ void pc_system_firmware_init(PCMachineState *pcms,
          * in the IGVM file.
          */
         if (!X86_MACHINE(pcms)->igvm) {
-            x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, true);
+            x86_bios_rom_init(X86_MACHINE(pcms), QMX_DEFAULT_BIOS,
+                              rom_memory, true);
         }
         return;
     }
@@ -250,7 +252,8 @@ void pc_system_firmware_init(PCMachineState *pcms,
          * in which case the firmware must be provided by the IGVM file.
          */
         if (!X86_MACHINE(pcms)->igvm) {
-            x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, false);
+            x86_bios_rom_init(X86_MACHINE(pcms), QMX_DEFAULT_BIOS,
+                              rom_memory, false);
         }
     } else {
         if (kvm_enabled() && !kvm_readonly_mem_enabled()) {
