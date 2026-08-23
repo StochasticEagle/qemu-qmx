@@ -10,6 +10,7 @@
 #include "qemu/qmx.h"
 #include "qemu/timer.h"
 #include "qom/object.h"
+#include "system/rtc.h"
 #include "system/system.h"
 #include "hw/rtc/mc146818rtc.h"
 #include "hw/rtc/mc146818rtc_regs.h"
@@ -37,7 +38,18 @@ static int qmx_cmos_from_bcd(MC146818RtcState *s, int value)
     if (s->cmos_data[RTC_REG_B] & REG_B_DM) {
         return value;
     }
+    if ((value & 0x0f) > 9 || ((value >> 4) & 0x0f) > 9) {
+        return -1;
+    }
     return ((value >> 4) * 10) + (value & 0x0f);
+}
+
+static int qmx_cmos_to_bcd(MC146818RtcState *s, int value)
+{
+    if (s->cmos_data[RTC_REG_B] & REG_B_DM) {
+        return value;
+    }
+    return ((value / 10) << 4) | (value % 10);
 }
 
 static bool qmx_cmos_set_image_time(MC146818RtcState *s)
@@ -52,9 +64,13 @@ static bool qmx_cmos_set_image_time(MC146818RtcState *s)
     hour = qmx_cmos_from_bcd(s, s->cmos_data[RTC_HOURS] & 0x7f);
     if (!(s->cmos_data[RTC_REG_B] & REG_B_24H)) {
         if (hour >= 0) {
-            hour %= 12;
-            if (s->cmos_data[RTC_HOURS] & 0x80) {
-                hour += 12;
+            if (hour < 1 || hour > 12) {
+                hour = -1;
+            } else {
+                hour %= 12;
+                if (s->cmos_data[RTC_HOURS] & 0x80) {
+                    hour += 12;
+                }
             }
         }
     }
@@ -68,6 +84,7 @@ static bool qmx_cmos_set_image_time(MC146818RtcState *s)
     if (tm.tm_sec < 0 || tm.tm_sec > 59 ||
         tm.tm_min < 0 || tm.tm_min > 59 ||
         tm.tm_hour < 0 || tm.tm_hour > 23 ||
+        tm.tm_wday < 0 || tm.tm_wday > 6 ||
         tm.tm_mday < 1 || tm.tm_mday > 31 ||
         tm.tm_mon < 0 || tm.tm_mon > 11 ||
         year < 0 || year > 99 || century < 0 || century > 99) {
@@ -81,20 +98,54 @@ static bool qmx_cmos_set_image_time(MC146818RtcState *s)
     return true;
 }
 
-static void qmx_cmos_restore_current_time(uint8_t current[QMX_CMOS_SIZE],
-                                          MC146818RtcState *s)
+static void qmx_cmos_set_current_time(MC146818RtcState *s)
 {
-    static const uint8_t time_regs[] = {
+    struct tm tm;
+    int year;
+
+    qemu_get_timedate(&tm, 0);
+    s->cmos_data[RTC_SECONDS] = qmx_cmos_to_bcd(s, tm.tm_sec);
+    s->cmos_data[RTC_MINUTES] = qmx_cmos_to_bcd(s, tm.tm_min);
+    if (s->cmos_data[RTC_REG_B] & REG_B_24H) {
+        s->cmos_data[RTC_HOURS] = qmx_cmos_to_bcd(s, tm.tm_hour);
+    } else {
+        int hour = (tm.tm_hour % 12) ? tm.tm_hour % 12 : 12;
+
+        s->cmos_data[RTC_HOURS] = qmx_cmos_to_bcd(s, hour);
+        if (tm.tm_hour >= 12) {
+            s->cmos_data[RTC_HOURS] |= 0x80;
+        }
+    }
+    s->cmos_data[RTC_DAY_OF_WEEK] = qmx_cmos_to_bcd(s, tm.tm_wday + 1);
+    s->cmos_data[RTC_DAY_OF_MONTH] = qmx_cmos_to_bcd(s, tm.tm_mday);
+    s->cmos_data[RTC_MONTH] = qmx_cmos_to_bcd(s, tm.tm_mon + 1);
+    year = tm.tm_year + 1900 - s->base_year;
+    s->cmos_data[RTC_YEAR] = qmx_cmos_to_bcd(s, year % 100);
+    s->cmos_data[RTC_CENTURY] = qmx_cmos_to_bcd(s, year / 100);
+
+    s->base_rtc = mktimegm(&tm);
+    s->last_update = qemu_clock_get_ns(rtc_clock);
+    s->offset = 0;
+}
+
+static bool qmx_cmos_changed(QmxCmosState *state)
+{
+    static const uint8_t volatile_regs[] = {
         RTC_SECONDS, RTC_MINUTES, RTC_HOURS, RTC_DAY_OF_WEEK,
-        RTC_DAY_OF_MONTH, RTC_MONTH, RTC_YEAR, RTC_CENTURY,
+        RTC_DAY_OF_MONTH, RTC_MONTH, RTC_YEAR, RTC_CENTURY, RTC_REG_C,
     };
+    uint8_t current[QMX_CMOS_SIZE];
     size_t i;
 
-    for (i = 0; i < ARRAY_SIZE(time_regs); i++) {
-        s->cmos_data[time_regs[i]] = current[time_regs[i]];
+    if (state->rtc_from_image) {
+        return memcmp(state->last, state->rtc->cmos_data, QMX_CMOS_SIZE) != 0;
     }
-    /* Register C is interrupt state, not persistent configuration. */
-    s->cmos_data[RTC_REG_C] = current[RTC_REG_C];
+
+    memcpy(current, state->rtc->cmos_data, QMX_CMOS_SIZE);
+    for (i = 0; i < ARRAY_SIZE(volatile_regs); i++) {
+        current[volatile_regs[i]] = state->last[volatile_regs[i]];
+    }
+    return memcmp(state->last, current, QMX_CMOS_SIZE) != 0;
 }
 
 static bool qmx_cmos_write(QmxCmosState *state, bool force)
@@ -104,8 +155,7 @@ static bool qmx_cmos_write(QmxCmosState *state, bool force)
     if (!state->active) {
         return true;
     }
-    if (!force && !memcmp(state->last, state->rtc->cmos_data,
-                          QMX_CMOS_SIZE)) {
+    if (!force && !qmx_cmos_changed(state)) {
         return true;
     }
 
@@ -187,7 +237,9 @@ static bool qmx_cmos_init(const char *file, const char *rtc_init, Error **errp)
 
     memcpy(rtc->cmos_data, contents, QMX_CMOS_SIZE);
     if (!strcmp(rtc_init, "time0")) {
-        qmx_cmos_restore_current_time(current, rtc);
+        qmx_cmos_set_current_time(rtc);
+        /* Register C is interrupt state, not persistent configuration. */
+        rtc->cmos_data[RTC_REG_C] = current[RTC_REG_C];
     } else if (!qmx_cmos_set_image_time(rtc)) {
         memcpy(rtc->cmos_data, current, QMX_CMOS_SIZE);
         warn_report("QMX nvram: '%s' contains an invalid RTC date/time; using volatile CMOS",
