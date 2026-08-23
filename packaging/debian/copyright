@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: QEMU-QMX
+Source: https://github.com/StochasticEagle/qemu-qmx
+
+Files: *
+Copyright: QEMU contributors and QEMU-QMX contributors
+License: GPL-2.0-or-later and other licenses documented in the source tree
+ The complete upstream licensing information is shipped in COPYING and the
+ per-component license files in the source tree.
