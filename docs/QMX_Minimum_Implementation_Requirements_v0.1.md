@@ -2,9 +2,9 @@
 
 This document supplements `QMX_Format_Specification_v0.1.md` and defines the minimum acceptance requirements for the first usable QMX implementation.
 
-## Required launch-equivalent configuration
+## Required parameter families
 
-QMX v1 must be able to represent and launch a VM equivalent to the following existing QEMU configuration without a wrapper script:
+The concrete Windows 98 configuration below is an acceptance fixture, not a set of QMX defaults:
 
 ```text
 qemu-system-x86_64
@@ -29,23 +29,67 @@ qemu-system-x86_64
 -fw_cfg name=opt/org.seabios/setup,string=1
 ```
 
-The initial QMX implementation therefore must support equivalents for:
+QMX MUST be able to represent that configuration, but none of those values become QMX defaults.
 
-- SDL display output;
-- 384 MB guest RAM;
-- KVM acceleration;
-- the QEMU `pentium3` CPU model, including the portable Bochs `p3_katmai` mapping;
-- `pc` machine type with ACPI disabled;
-- Cirrus VGA;
-- SDL audio backend;
-- Sound Blaster 16 attached to the selected audio backend;
-- boot menu enabled with explicit boot-class order;
-- QCOW2 hard disks;
-- raw read-only CD-ROM images;
-- explicit primary/secondary IDE bus and master/slave placement;
-- fw_cfg string items, including `opt/org.seabios/setup`.
+The initial implementation must support the following **parameter families** generically:
+
+- display backend and its valid QEMU properties;
+- guest memory size;
+- accelerator selection and accelerator properties;
+- CPU model and CPU properties;
+- machine type and machine properties;
+- VGA/display-adapter selection;
+- audio backends and their properties;
+- audio devices and their properties;
+- boot menu and boot-order settings;
+- block backends, including QEMU-supported image formats and drive properties;
+- device attachment, including explicit IDE bus/unit placement;
+- `fw_cfg` items and their supported QEMU properties.
+
+The values shown in the Windows 98 fixture (`sdl`, `384`, `kvm`, `pentium3`, `pc,acpi=off`, `cirrus`, `sb16`, `qcow2`, `raw`, and so on) are examples that must work, not a whitelist.
+
+### QEMU-profile value coverage
+
+For a QMX file using `#qmx: profile=qemu`, QMX SHOULD support every value that the running QEMU build supports for the mapped parameter family. QMX must not maintain a separate hard-coded whitelist of QEMU display backends, accelerators, CPU models, machine types, VGA devices, audio backends/devices, block formats, device properties, or `fw_cfg` values unless translation is technically required.
+
+Where possible, QMX should translate its structured input directly into QEMU's existing option/configuration objects and let the existing QEMU parser and device model validate the value. This keeps QMX capability synchronized with the QEMU build instead of freezing QMX to the examples in this document.
+
+Examples:
+
+- `#qemu: display=sdl` is valid when that QEMU build provides SDL; another valid display backend supported by the build should also be accepted through the same parameter family.
+- `#qemu: accel=kvm` is one valid accelerator; other accelerators supported by the running QEMU build should be expressible without changing the QMX grammar.
+- `cpu:` / QEMU CPU configuration must not be limited to `pentium3`; the QEMU profile must be able to select other CPU models and supported CPU properties.
+- `#qemu: machine=pc` is one machine type; other machine types supported by the running QEMU binary should be selectable.
+- `vga: extension=cirrus` is one portable/legacy mapping; QEMU-profile configuration must also be able to select other VGA/display devices supported by QEMU.
+- `sb16` is an acceptance-test audio device, not the only permitted audio device.
+- `qcow2` and `raw` are acceptance-test block formats, not the only permitted formats.
+- the example boot order `ca` / `cdrom, disk` is not a default; other valid boot-order combinations must be supported.
+- the example `fw_cfg` item is not special-cased as the only usable item; general supported `fw_cfg` entries must be representable.
+
+The Portable QMX profile may define a smaller Bochs-compatible vocabulary where semantic translation is necessary. That restriction must not be imposed on the QEMU profile.
+
+## Defaults and omitted parameters
+
+QMX does not redefine QEMU defaults merely by adding support for a parameter family.
+
+If a QMX file omits a parameter, the effective value should be the same value QEMU would normally use in the corresponding situation unless another QMX directive necessarily implies an explicit device or property.
+
+Examples:
+
+- omitting a display directive does not imply SDL;
+- omitting memory does not imply 384 MB;
+- omitting accelerator configuration does not imply KVM;
+- omitting CPU configuration does not imply Pentium III;
+- omitting machine configuration does not imply `pc,acpi=off` beyond QEMU's own normal default selection;
+- omitting VGA configuration does not imply Cirrus;
+- omitting audio does not imply SB16 or SDL audio;
+- omitting a boot directive does not imply `ca`;
+- omitting a drive does not create the Windows 98 example drive;
+- omitting the SeaBIOS Setup `fw_cfg` item does not request Setup entry.
 
 ## Example QMX representation
+
+The following is one test fixture corresponding to the Windows 98 configuration above:
 
 ```text
 #qmx: version=1
@@ -103,6 +147,8 @@ QMX must preserve explicitly declared hardware placement. For the initial legacy
 
 A device must not be silently attached to another available slot if its configured slot cannot be created.
 
+QEMU-profile generic device configuration may additionally express other QEMU buses, devices, and properties as support is implemented; the four legacy IDE names above are required portable convenience mappings, not the complete QEMU device model.
+
 ## Failure policy
 
 QMX distinguishes configuration errors from media-availability errors.
@@ -114,13 +160,12 @@ The following remain fatal:
 - the QMX file itself cannot be opened;
 - malformed QMX syntax;
 - unknown or unsupported required directive;
-- invalid machine type;
-- invalid CPU model;
-- impossible device topology, including duplicate use of the same IDE slot;
+- a parameter value rejected by the underlying QEMU subsystem (for example, an unavailable machine type or CPU model);
+- impossible device topology, including duplicate use of the same explicitly assigned IDE slot;
 - invalid numeric or enum values;
 - a required BIOS/ROM image cannot be loaded.
 
-Diagnostics should identify the QMX file and source directive/line when possible.
+Diagnostics should identify the QMX file and source directive/line when possible and should preserve the useful diagnostic from the underlying QEMU parser where applicable.
 
 ### Non-fatal disk and removable-media failures
 
@@ -175,7 +220,7 @@ A missing writable CMOS image should normally be created automatically from norm
 
 ## SeaBIOS Setup entry
 
-The initial implementation must support:
+The initial implementation must support this particular acceptance-test item:
 
 ```text
 #qemu: fw_cfg.name="opt/org.seabios/setup", string="1"
@@ -187,4 +232,4 @@ which maps to:
 -fw_cfg name=opt/org.seabios/setup,string=1
 ```
 
-fw_cfg is only the Setup-entry/configuration input mechanism. Persistent BIOS settings remain in the file-backed CMOS/NVRAM state.
+It is an example of general `fw_cfg` support, not a QMX default or a special-purpose restriction. `fw_cfg` remains only an input/configuration mechanism; persistent BIOS settings remain in the file-backed CMOS/NVRAM state.
