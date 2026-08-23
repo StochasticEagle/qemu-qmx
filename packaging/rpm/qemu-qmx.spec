@@ -1,0 +1,86 @@
+Name:           qemu-qmx
+Version:        11.1.50
+Release:        0.9.0.beta1%{?dist}
+Summary:        QEMU x86 system emulator with QMX machine configuration support
+License:        GPL-2.0-or-later
+URL:            https://github.com/StochasticEagle/qemu-qmx
+Source0:        https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/qmx-v0.9.0-beta.1.tar.gz
+
+Provides:       qemu-system-x86 = %{version}-%{release}
+Conflicts:      qemu-system-x86
+Obsoletes:      qemu-system-x86 < %{version}-%{release}
+Requires:       qemu-common
+
+BuildRequires:  gcc
+BuildRequires:  glib2-devel
+BuildRequires:  git
+BuildRequires:  libslirp-devel
+BuildRequires:  meson
+BuildRequires:  ninja-build
+BuildRequires:  pixman-devel
+BuildRequires:  pkgconfig
+BuildRequires:  python3
+BuildRequires:  SDL2-devel
+BuildRequires:  zlib-devel
+
+%description
+QEMU-QMX is the QEMU x86 system emulator with QMX machine configuration
+support.  This package intentionally replaces the distribution's
+qemu-system-x86 package and installs the standard qemu-system-i386 and
+qemu-system-x86_64 executable names.
+
+%prep
+%autosetup -n qemu-qmx-qmx-v0.9.0-beta.1
+
+%build
+mkdir build-package
+cd build-package
+../configure \
+    --prefix=%{_prefix} \
+    --libdir=%{_libdir} \
+    --target-list=i386-softmmu,x86_64-softmmu \
+    --without-default-features \
+    --enable-system \
+    --enable-kvm \
+    --enable-tcg \
+    --enable-sdl \
+    --enable-slirp \
+    --audio-drv-list=sdl \
+    --disable-docs \
+    --disable-tools \
+    --disable-guest-agent
+ninja -v
+
+%check
+python3 tests/qmx/test-qmx-parser.py build-package/qemu-system-x86_64
+python3 tests/qmx/test-qmx-integration.py build-package/qemu-system-x86_64
+
+%install
+install -Dpm0755 build-package/qemu-system-x86_64 \
+    %{buildroot}%{_bindir}/qemu-system-x86_64
+install -Dpm0755 build-package/qemu-system-i386 \
+    %{buildroot}%{_bindir}/qemu-system-i386
+
+install -Dpm0644 QMX_VERSION \
+    %{buildroot}%{_docdir}/qemu-qmx/QMX_VERSION
+install -Dpm0644 docs/QMX_Format_Specification_v0.2.md \
+    %{buildroot}%{_docdir}/qemu-qmx/QMX_Format_Specification_v0.2.md
+install -Dpm0644 docs/QMX_Minimum_Implementation_Requirements_v0.1.md \
+    %{buildroot}%{_docdir}/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
+install -Dpm0644 docs/releases/QMX_0.9.0-beta.1.md \
+    %{buildroot}%{_docdir}/qemu-qmx/QMX_0.9.0-beta.1.md
+install -Dpm0644 COPYING \
+    %{buildroot}%{_licensedir}/qemu-qmx/COPYING
+
+%files
+%license %{_licensedir}/qemu-qmx/COPYING
+%doc %{_docdir}/qemu-qmx/QMX_VERSION
+%doc %{_docdir}/qemu-qmx/QMX_Format_Specification_v0.2.md
+%doc %{_docdir}/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
+%doc %{_docdir}/qemu-qmx/QMX_0.9.0-beta.1.md
+%{_bindir}/qemu-system-i386
+%{_bindir}/qemu-system-x86_64
+
+%changelog
+* Sun Aug 23 2026 QEMU-QMX Project <noreply@github.com> - 11.1.50-0.9.0.beta1
+- Initial QMX 0.9 beta replacement package
