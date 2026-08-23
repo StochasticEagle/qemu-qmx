@@ -64,7 +64,8 @@ jobs:
         run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Restore same-day compiler cache
-        uses: actions/cache@v6
+        id: ccache-restore
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ccache
           key: qemu-qmx-ccache-${{ runner.os }}-${{ steps.cache-key.outputs.day }}-${{ hashFiles('**/*.c', '**/*.h', '**/*.S', '**/*.s', '**/meson.build', 'configure', 'Makefile', 'roms/seabios/**') }}
@@ -79,6 +80,13 @@ jobs:
           echo "/usr/lib/ccache" >> "$GITHUB_PATH"
           ccache --max-size=2G
           ccache --zero-stats
+          echo "Resolved compilers:"
+          command -v cc
+          command -v gcc
+          echo "ccache configuration:"
+          ccache --show-config
+          echo "ccache statistics before build:"
+          ccache --show-stats
 
       - name: Build full QEMU-QMX and SeaBIOS once
         shell: bash
@@ -102,6 +110,7 @@ jobs:
             tools/qmx-verify-gui.c \
             -o build-release/qmx-verify-gui \
             $(pkg-config --cflags --libs sdl2)
+          echo "ccache statistics after build:"
           ccache --show-stats
 
       - name: Test the single full build
@@ -122,6 +131,13 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Save same-day compiler cache
+        if: steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
       - name: Build self-contained source archive
         shell: bash
