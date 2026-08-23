@@ -8,9 +8,14 @@ URL:            https://github.com/StochasticEagle/qemu-qmx
 Source0:        https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/qmx-v0.9.0-beta.1.tar.gz
 
 Provides:       qemu-system-x86 = 2:%{version}-%{release}
+Provides:       qemu-system-x86-core = 2:%{version}-%{release}
 Conflicts:      qemu-system-x86
+Conflicts:      qemu-system-x86-core
 Obsoletes:      qemu-system-x86 < 2:%{version}-%{release}
+Obsoletes:      qemu-system-x86-core < 2:%{version}-%{release}
 Requires:       qemu-common
+Requires:       seabios-bin
+Requires:       seavgabios-bin
 
 BuildRequires:  gcc
 BuildRequires:  glib2-devel
@@ -26,9 +31,9 @@ BuildRequires:  zlib-devel
 
 %description
 QEMU-QMX is the QEMU x86 system emulator with QMX machine configuration
-support.  This package intentionally replaces the distribution's
-qemu-system-x86 package and installs the standard qemu-system-i386 and
-qemu-system-x86_64 executable names.
+support. This package intentionally replaces Fedora's qemu-system-x86 and
+qemu-system-x86-core packages and installs the standard qemu-system-i386,
+qemu-system-x86_64, and qemu-kvm executable names.
 
 %prep
 %autosetup -n qemu-qmx-qmx-v0.9.0-beta.1
@@ -61,6 +66,13 @@ install -Dpm0755 build-package/qemu-system-x86_64 \
     %{buildroot}%{_bindir}/qemu-system-x86_64
 install -Dpm0755 build-package/qemu-system-i386 \
     %{buildroot}%{_bindir}/qemu-system-i386
+ln -s qemu-system-x86_64 %{buildroot}%{_bindir}/qemu-kvm
+
+for rom in kvmvapic.bin linuxboot.bin linuxboot_dma.bin multiboot.bin multiboot_dma.bin pvh.bin qboot.rom; do
+    if test -f pc-bios/$rom; then
+        install -Dpm0644 pc-bios/$rom %{buildroot}%{_datadir}/qemu/$rom
+    fi
+done
 
 install -Dpm0644 QMX_VERSION \
     %{buildroot}%{_docdir}/qemu-qmx/QMX_VERSION
@@ -79,8 +91,14 @@ install -Dpm0644 COPYING \
 %doc %{_docdir}/qemu-qmx/QMX_Format_Specification_v0.2.md
 %doc %{_docdir}/qemu-qmx/QMX_Minimum_Implementation_Requirements_v0.1.md
 %doc %{_docdir}/qemu-qmx/QMX_0.9.0-beta.1.md
+%{_bindir}/qemu-kvm
 %{_bindir}/qemu-system-i386
 %{_bindir}/qemu-system-x86_64
+%{_datadir}/qemu/kvmvapic.bin
+%{_datadir}/qemu/linuxboot*.bin
+%{_datadir}/qemu/multiboot*.bin
+%{_datadir}/qemu/pvh.bin
+%{_datadir}/qemu/qboot.rom
 
 %changelog
 * Sun Aug 23 2026 QEMU-QMX Project <noreply@github.com> - 2:11.1.50-0.9.0.beta1
