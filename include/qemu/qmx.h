@@ -14,6 +14,7 @@ typedef bool (*QmxNvramBackendInit)(const char *file,
                                     Error **errp);
 
 bool qmx_expand_argv(int *argc, char ***argv, Error **errp);
+bool qmx_check_requested(void);
 bool qmx_runtime_init(Error **errp);
 void qmx_register_nvram_backend(QmxNvramBackendInit initfn);
 
