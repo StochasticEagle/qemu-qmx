@@ -408,9 +408,11 @@ static bool qmx_scalar_cli_option(const char *opt, const char **key,
     if (!strcmp(opt, "name")) *key = "name";
     else if (!strcmp(opt, "machine") || !strcmp(opt, "M")) *key = "machine";
     else if (!strcmp(opt, "m")) *key = "memory";
-    else if (!strcmp(opt, "accel") || !strcmp(opt, "enable-kvm")) *key = "accel";
+    else if (!strcmp(opt, "accel")) *key = "accel";
+    else if (!strcmp(opt, "enable-kvm")) { *key = "accel"; *takes_arg = false; }
     else if (!strcmp(opt, "cpu")) *key = "cpu";
-    else if (!strcmp(opt, "display") || !strcmp(opt, "nographic")) *key = "display";
+    else if (!strcmp(opt, "display")) *key = "display";
+    else if (!strcmp(opt, "nographic")) { *key = "display"; *takes_arg = false; }
     else if (!strcmp(opt, "vga")) *key = "vga";
     else if (!strcmp(opt, "bios")) *key = "bios";
     else if (!strcmp(opt, "boot")) *key = "boot";
@@ -432,8 +434,7 @@ static bool qmx_object_cli_option(const char *opt)
 }
 
 static GHashTable *qmx_collect_cli_overrides(int argc, char **argv,
-                                             int qmx_index,
-                                             bool explicit_qmx)
+                                             int qmx_index)
 {
     GHashTable *overrides = g_hash_table_new_full(g_str_hash, g_str_equal,
                                                   g_free, NULL);
@@ -806,7 +807,7 @@ bool qmx_expand_argv(int *argc, char ***argv, Error **errp)
     }
 
     qmx_runtime_reset();
-    overrides = qmx_collect_cli_overrides(*argc, oldv, qmx_index, explicit_qmx);
+    overrides = qmx_collect_cli_overrides(*argc, oldv, qmx_index);
     qmx_args = qmx_parse_file(qmx_file, overrides, errp);
     if (!qmx_args) return false;
 
