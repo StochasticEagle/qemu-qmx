@@ -5,8 +5,9 @@ Usage:
     python tests/qmx/test-qmx-parser.py [build/qemu-system-x86_64]
 
 Most tests stop at QEMU's normal -version path, so they exercise QMX parsing and
-argument translation without starting a virtual machine.  -qmx-check tests use
-the dedicated parse/translation-only path.
+argument translation without starting a virtual machine. -qmx-check tests use
+the dedicated parse/translation-only path. Launch-level behavior is covered by
+test-qmx-integration.py.
 """
 
 from __future__ import annotations
@@ -34,12 +35,12 @@ def run_qmx(text: str, *extra: str) -> subprocess.CompletedProcess[str]:
         )
 
 
-def run_qmx_check(text: str) -> subprocess.CompletedProcess[str]:
+def run_qmx_check(text: str, *extra: str) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory(prefix="qmx-check-test-") as tmp:
         qmx = pathlib.Path(tmp) / "machine.qmx"
         qmx.write_text(text, encoding="utf-8")
         return subprocess.run(
-            [str(QEMU), "-qmx-check", str(qmx)],
+            [str(QEMU), "-qmx-check", str(qmx), *extra],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -56,8 +57,8 @@ def expect_ok(name: str, text: str, *extra: str) -> None:
         )
 
 
-def expect_check_ok(name: str, text: str) -> None:
-    result = run_qmx_check(text)
+def expect_check_ok(name: str, text: str, *extra: str) -> None:
+    result = run_qmx_check(text, *extra)
     if result.returncode != 0:
         raise AssertionError(
             f"{name}: expected success, got {result.returncode}\n"
@@ -148,6 +149,35 @@ monitor = none
 smp = 2
 rtc = base=utc
 usb = off
+''',
+    )
+
+    expect_check_ok(
+        "same-id object CLI overrides",
+        '''\
+qmx = 1
+drive.disk = file="missing-qmx.img",format=raw,if=none
+device.nic = e1000,netdev=net0
+netdev.net0 = user
+audiodev.audio0 = none
+chardev.char0 = null
+object.mem0 = memory-backend-ram,size=1M
+fw_cfg.test = name="opt/qmx/override",string="qmx"
+''',
+        "-drive", "file=cli.img,format=raw,if=none,id=disk",
+        "-device", "e1000,netdev=net0,id=nic",
+        "-netdev", "user,id=net0",
+        "-audiodev", "none,id=audio0",
+        "-chardev", "null,id=char0",
+        "-object", "memory-backend-ram,size=2M,id=mem0",
+        "-fw_cfg", "name=opt/qmx/override,string=cli",
+    )
+
+    expect_check_ok(
+        "rtc image mode",
+        '''\
+qmx = 1
+nvram = file="machine.cmos",format=cmos128,rtc_init=image
 ''',
     )
 
