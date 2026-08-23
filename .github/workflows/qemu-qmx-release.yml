@@ -8,17 +8,16 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   SEABIOS_COMMIT: e0b009af38836aa5d1d55713d470721835f03664
 
 jobs:
-  source:
-    name: Source archive
+  release:
+    name: Build and publish release
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
+
     steps:
       - name: Check out source once
         uses: actions/checkout@v6
@@ -26,227 +25,164 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Resolve version
-        id: version
+      - name: Validate release version
         shell: bash
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          version="$REQUESTED_VERSION"
-          test -n "$version"
-          test "$version" = "$(cat QMX_VERSION)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          test -n "$REQUESTED_VERSION"
+          test "$REQUESTED_VERSION" = "$(cat QMX_VERSION)"
 
-      - name: Create self-contained source archive
+      - name: Prepare artifact directories
         shell: bash
         run: |
-          version="${{ steps.version.outputs.version }}"
-          archive="$RUNNER_TEMP/qemu-qmx-${version}-source.tar.gz"
-          tar --exclude-vcs --exclude='./build*' \
-            --transform="s,^\./,qemu-qmx-${version}/," \
+          rm -rf artifacts
+          mkdir -p artifacts/source artifacts/debian artifacts/rpm artifacts/arch
+
+      - name: Build self-contained source archive
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          archive="$RUNNER_TEMP/qemu-qmx-${VERSION}-source.tar.gz"
+          tar \
+            --exclude-vcs \
+            --exclude='./build*' \
+            --exclude='./artifacts' \
+            --transform="s,^\./,qemu-qmx-${VERSION}/," \
             -czf "$archive" .
-          cp "$archive" "qemu-qmx-${version}-source.tar.gz"
-          sha256sum "qemu-qmx-${version}-source.tar.gz" > "qemu-qmx-${version}-source.tar.gz.sha256"
-
-      - name: Upload source archive
-        uses: actions/upload-artifact@v7
-        with:
-          name: qemu-qmx-source
-          path: |
-            qemu-qmx-${{ steps.version.outputs.version }}-source.tar.gz
-            qemu-qmx-${{ steps.version.outputs.version }}-source.tar.gz.sha256
-          if-no-files-found: error
-
-  debian:
-    name: Debian / apt
-    needs: source
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download prepared source
-        uses: actions/download-artifact@v7
-        with:
-          name: qemu-qmx-source
-          path: prepared-source
-
-      - name: Extract prepared source
-        shell: bash
-        run: |
-          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential debhelper devscripts dpkg-dev ninja-build meson pkg-config \
-            python3 python3-venv libglib2.0-dev libpixman-1-dev libslirp-dev \
-            libsdl2-dev zlib1g-dev
+          cp "$archive" "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz"
+          sha256sum "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz" \
+            > "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz.sha256"
 
       - name: Build Debian package
-        run: |
-          cp -a packaging/debian debian
-          dpkg-buildpackage -b -us -uc
-          mkdir -p artifacts/debian
-          cp ../qemu-qmx_*.deb artifacts/debian/
-          sha256sum artifacts/debian/*.deb > artifacts/debian/SHA256SUMS-debian
-
-      - name: Upload Debian package
-        uses: actions/upload-artifact@v7
-        with:
-          name: qemu-qmx-debian
-          path: artifacts/debian/*
-          if-no-files-found: error
-
-  rpm:
-    name: Fedora / dnf
-    needs: source
-    runs-on: ubuntu-latest
-    container: fedora:latest
-    steps:
-      - name: Download prepared source
-        uses: actions/download-artifact@v7
-        with:
-          name: qemu-qmx-source
-          path: prepared-source
-
-      - name: Extract prepared source
         shell: bash
         run: |
-          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$GITHUB_WORKSPACE/artifacts/debian:/out" \
+            ubuntu:latest \
+            bash -euxo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y \
+                build-essential debhelper devscripts dpkg-dev ninja-build meson pkg-config \
+                python3 python3-venv libglib2.0-dev libpixman-1-dev libslirp-dev \
+                libsdl2-dev zlib1g-dev
+              cp -a /source /work
+              cd /work
+              cp -a packaging/debian debian
+              dpkg-buildpackage -b -us -uc
+              cp /qemu-qmx_*.deb /out/
+              sha256sum /out/*.deb > /out/SHA256SUMS-debian
+            '
 
-      - name: Install build dependencies
-        run: |
-          dnf -y install \
-            rpm-build gcc binutils make glib2-devel libslirp-devel meson ninja-build \
-            pixman-devel pkgconf-pkg-config python3 SDL2-devel zlib-devel tar gzip
-
-      - name: Prepare RPM source archives
+      - name: Build Fedora RPM
         shell: bash
         run: |
-          version="${{ needs.source.outputs.version }}"
-          tag="qemu-qmx-v${version}"
-          mkdir -p "$PWD/rpmbuild/SOURCES" "$PWD/artifacts/rpm"
-          source_archive="$RUNNER_TEMP/${tag}.tar.gz"
-          tar --exclude-vcs --exclude='./build*' --exclude='./prepared-source' --exclude='./rpmbuild' --exclude='./artifacts' \
-            --transform="s,^\./,qemu-qmx-${tag}/," \
-            -czf "$source_archive" .
-          cp "$source_archive" "$PWD/rpmbuild/SOURCES/${tag}.tar.gz"
-          tar -C roms \
-            --exclude-vcs \
-            --transform="s,^seabios/,seabios-setupmenu-${SEABIOS_COMMIT}/," \
-            -czf "$PWD/rpmbuild/SOURCES/${SEABIOS_COMMIT}.tar.gz" seabios
+          docker run --rm \
+            -e SEABIOS_COMMIT="$SEABIOS_COMMIT" \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$GITHUB_WORKSPACE/artifacts/rpm:/out" \
+            fedora:latest \
+            bash -euxo pipefail -c '
+              dnf -y install \
+                rpm-build gcc binutils make glib2-devel libslirp-devel meson ninja-build \
+                pixman-devel pkgconf-pkg-config python3 SDL2-devel zlib-devel tar gzip
+              cp -a /source /work
+              cd /work
+              version="$(cat QMX_VERSION)"
+              tag="qemu-qmx-v${version}"
+              mkdir -p /rpmbuild/SOURCES
+              tar \
+                --exclude-vcs \
+                --exclude="./build*" \
+                --exclude="./artifacts" \
+                --transform="s,^\./,qemu-qmx-${tag}/," \
+                -czf "/rpmbuild/SOURCES/${tag}.tar.gz" .
+              tar -C roms \
+                --exclude-vcs \
+                --transform="s,^seabios/,seabios-setupmenu-${SEABIOS_COMMIT}/," \
+                -czf "/rpmbuild/SOURCES/${SEABIOS_COMMIT}.tar.gz" seabios
+              rpmbuild -ba packaging/rpm/qemu-qmx.spec \
+                --define "_topdir /rpmbuild" \
+                --define "_sourcedir /rpmbuild/SOURCES"
+              find /rpmbuild/RPMS -name "*.rpm" -exec cp -v {} /out/ \;
+              sha256sum /out/*.rpm > /out/SHA256SUMS-rpm
+            '
 
-      - name: Build RPM
+      - name: Build Arch package
         shell: bash
         run: |
-          rpmbuild -ba packaging/rpm/qemu-qmx.spec \
-            --define "_topdir $PWD/rpmbuild" \
-            --define "_sourcedir $PWD/rpmbuild/SOURCES"
-          find rpmbuild/RPMS -name '*.rpm' -exec cp -v {} artifacts/rpm/ \;
-          sha256sum artifacts/rpm/*.rpm > artifacts/rpm/SHA256SUMS-rpm
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$GITHUB_WORKSPACE/artifacts/arch:/out" \
+            archlinux:base-devel \
+            bash -euxo pipefail -c '
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed \
+                git gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
+              useradd -m builder
+              mkdir -p /build/src/qemu-qmx /build/src/seabios-qmx
+              cp -a /source/. /build/src/qemu-qmx/
+              rm -rf /build/src/qemu-qmx/roms/seabios
+              cp -a /source/roms/seabios/. /build/src/seabios-qmx/
+              cp /source/packaging/arch/PKGBUILD /build/PKGBUILD
+              sed -i \
+                -e '\''s|source=(|source=(\n  "qemu-qmx::file://src/qemu-qmx"\n  "seabios-qmx::file://src/seabios-qmx"|'\'' \
+                -e '\''/git+https:\/\/github.com\/StochasticEagle\/qemu-qmx.git/d'\'' \
+                -e '\''/git+https:\/\/github.com\/StochasticEagle\/seabios-setupmenu.git/d'\'' \
+                /build/PKGBUILD
+              chown -R builder:builder /build
+              su builder -c "cd /build && makepkg --noconfirm --noextract"
+              cp /build/qemu-qmx-*.pkg.tar.* /out/
+              sha256sum /out/qemu-qmx-*.pkg.tar.* > /out/SHA256SUMS-arch
+            '
 
-      - name: Upload RPM package
-        uses: actions/upload-artifact@v7
-        with:
-          name: qemu-qmx-rpm
-          path: artifacts/rpm/*
-          if-no-files-found: error
-
-  arch:
-    name: Arch / pacman
-    needs: source
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
-    steps:
-      - name: Download prepared source
-        uses: actions/download-artifact@v7
-        with:
-          name: qemu-qmx-source
-          path: prepared-source
-
-      - name: Extract prepared source
+      - name: Verify release payload
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          tar -xzf "prepared-source/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" --strip-components=1
-
-      - name: Install build dependencies
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed \
-            gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
-          useradd -m builder
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-
-      - name: Build Arch package from prepared source
-        shell: bash
-        run: |
-          work="$GITHUB_WORKSPACE/artifacts/arch-work"
-          mkdir -p "$work/src/qemu-qmx" "$work/src/seabios-qmx" "$GITHUB_WORKSPACE/artifacts/arch"
-          tar --exclude='./prepared-source' --exclude='./artifacts' -cf - . | tar -C "$work/src/qemu-qmx" -xf -
-          rm -rf "$work/src/qemu-qmx/roms/seabios"
-          cp -a roms/seabios/. "$work/src/seabios-qmx/"
-          cp packaging/arch/PKGBUILD "$work/PKGBUILD"
-          sed -i \
-            -e 's|source=(|source=(\n  "qemu-qmx::file://src/qemu-qmx"\n  "seabios-qmx::file://src/seabios-qmx"|' \
-            -e '/git+https:\/\/github.com\/StochasticEagle\/qemu-qmx.git/d' \
-            -e '/git+https:\/\/github.com\/StochasticEagle\/seabios-setupmenu.git/d' \
-            "$work/PKGBUILD"
-          chown -R builder:builder "$GITHUB_WORKSPACE/artifacts"
-          su builder -c "cd '$work' && makepkg --noconfirm --noextract"
-          cp "$work"/qemu-qmx-*.pkg.tar.* "$GITHUB_WORKSPACE/artifacts/arch/"
-          sha256sum "$GITHUB_WORKSPACE"/artifacts/arch/qemu-qmx-*.pkg.tar.* > "$GITHUB_WORKSPACE/artifacts/arch/SHA256SUMS-arch"
-
-      - name: Upload Arch package
-        uses: actions/upload-artifact@v7
-        with:
-          name: qemu-qmx-arch
-          path: artifacts/arch/*
-          if-no-files-found: error
-
-  release:
-    name: Publish GitHub release
-    needs: [source, debian, rpm, arch]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: release
-          merge-multiple: true
-
-      - name: Extract release metadata from prepared source
-        shell: bash
-        run: |
-          mkdir release-source
-          tar -xzf "release/qemu-qmx-${{ needs.source.outputs.version }}-source.tar.gz" \
-            --strip-components=1 -C release-source
+          test -f "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz"
+          compgen -G 'artifacts/debian/qemu-qmx_*.deb' >/dev/null
+          compgen -G 'artifacts/rpm/*.rpm' >/dev/null
+          compgen -G 'artifacts/arch/qemu-qmx-*.pkg.tar.*' >/dev/null
 
       - name: Create consolidated SHA-256 checksums
         shell: bash
         run: |
-          cd release
-          sha256sum \
-            qemu-qmx-*-source.tar.gz \
-            qemu-qmx_*.deb \
-            *.rpm \
-            qemu-qmx-*.pkg.tar.* > SHA256SUMS
+          (
+            cd artifacts
+            sha256sum \
+              source/qemu-qmx-*-source.tar.gz \
+              debian/qemu-qmx_*.deb \
+              rpm/*.rpm \
+              arch/qemu-qmx-*.pkg.tar.*
+          ) > artifacts/SHA256SUMS
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: qemu-qmx-${{ inputs.version }}
+          path: artifacts/
+          if-no-files-found: error
 
       - name: Publish beta release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
-          version="$REQUESTED_VERSION"
-          test -n "$version"
-          test "$version" = "$(cat release-source/QMX_VERSION)"
-          tag="qemu-qmx-v${version}"
+          tag="qemu-qmx-v${VERSION}"
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
-            release/* \
-            --notes-file "release-source/docs/releases/QMX_${version}.md" \
+            artifacts/source/* \
+            artifacts/debian/* \
+            artifacts/rpm/* \
+            artifacts/arch/* \
+            artifacts/SHA256SUMS \
+            --notes-file "docs/releases/QMX_${VERSION}.md" \
             --prerelease \
-            --title "QEMU-QMX ${version} beta" \
+            --title "QEMU-QMX ${VERSION} beta" \
             --target "$GITHUB_SHA"
