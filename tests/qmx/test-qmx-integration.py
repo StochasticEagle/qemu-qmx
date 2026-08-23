@@ -32,7 +32,6 @@ machine = pc
 memory = 64M
 accel = tcg
 display = none
-serial = none
 parallel = none
 monitor = none
 '''
@@ -79,6 +78,7 @@ def test_missing_media(root: pathlib.Path) -> None:
     write_qmx(
         qmx,
         '''\
+serial = none
 drive.floppy = file="missing-floppy.img",format=raw,if=floppy
 drive.hd = file="missing-hd.qcow2",format=qcow2,if=none
 device.hdd = ide-hd,drive=hd,bus=ide.0,unit=0
@@ -143,6 +143,7 @@ def test_cli_precedence(root: pathlib.Path) -> None:
     write_qmx(
         qmx,
         '''\
+serial = none
 drive.disk = file="qmx.raw",format=raw,if=none
 netdev.net0 = user
 device.net = e1000,netdev=net0
@@ -175,7 +176,7 @@ def test_rtc_image(root: pathlib.Path) -> None:
 
     write_qmx(
         qmx,
-        'nvram = file="state/machine.cmos",format=cmos128,rtc_init=time0\n',
+        'serial = none\nnvram = file="state/machine.cmos",format=cmos128,rtc_init=time0\n',
     )
     launch(["-qmx", str(qmx)], root)
     cmos = case / "state" / "machine.cmos"
@@ -184,7 +185,7 @@ def test_rtc_image(root: pathlib.Path) -> None:
 
     write_qmx(
         qmx,
-        'nvram = file="state/machine.cmos",format=cmos128,rtc_init=image\n',
+        'serial = none\nnvram = file="state/machine.cmos",format=cmos128,rtc_init=image\n',
     )
     _, stderr = launch(["-qmx", str(qmx)], root)
     if "invalid RTC date/time" in stderr:
@@ -195,7 +196,7 @@ def test_bare_and_explicit(root: pathlib.Path) -> None:
     case = root / "invocation-forms"
     case.mkdir()
     qmx = case / "machine.qmx"
-    write_qmx(qmx, "")
+    write_qmx(qmx, "serial = none\n")
 
     launch([str(qmx)], root)
     launch(["-qmx", str(qmx)], root)
