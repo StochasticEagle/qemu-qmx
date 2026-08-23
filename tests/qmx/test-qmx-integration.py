@@ -18,7 +18,11 @@ import time
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-QEMU = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build/qemu-system-x86_64"
+QEMU = (
+    pathlib.Path(sys.argv[1]).resolve()
+    if len(sys.argv) > 1
+    else (ROOT / "build/qemu-system-x86_64").resolve()
+)
 STARTUP_SECONDS = 1.0
 
 
