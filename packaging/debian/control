@@ -4,7 +4,9 @@ Priority: optional
 Maintainer: QEMU-QMX Project <noreply@github.com>
 Build-Depends:
  debhelper-compat (= 13),
+ binutils,
  gcc,
+ make,
  libglib2.0-dev,
  libpixman-1-dev,
  libslirp-dev,
@@ -26,7 +28,7 @@ Depends:
  qemu-system-common,
  qemu-system-data,
  seabios
-Provides: qemu-system-x86 (= ${binary:Version})
+Provides: qemu-system-x86
 Conflicts: qemu-system-x86
 Replaces: qemu-system-x86
 Description: QEMU x86 system emulator with QMX configuration support
