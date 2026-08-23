@@ -24,16 +24,25 @@ Package: qemu-qmx
 Architecture: amd64
 Depends:
  ${misc:Depends},
- ${shlibs:Depends},
+ ${shlibs:Depends}
+Provides:
+ qemu-system-x86,
  qemu-system-common,
  qemu-system-data,
  seabios
-Provides: qemu-system-x86
-Conflicts: qemu-system-x86
-Replaces: qemu-system-x86
+Conflicts:
+ qemu-system-x86,
+ qemu-system-common,
+ qemu-system-data,
+ seabios
+Replaces:
+ qemu-system-x86,
+ qemu-system-common,
+ qemu-system-data,
+ seabios
 Description: QEMU x86 system emulator with QMX configuration support
  QEMU-QMX provides the standard qemu-system-i386 and
  qemu-system-x86_64 executables with QMX machine configuration support.
  .
- This package intentionally replaces the distribution qemu-system-x86
- package rather than installing a side-by-side emulator binary.
+ This package intentionally replaces the distribution QEMU x86 runtime,
+ shared data, and SeaBIOS packages rather than installing side-by-side files.
