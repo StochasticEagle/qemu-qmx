@@ -36,7 +36,7 @@ QMX does not require or attempt direct configuration-file compatibility with ano
 
 ---
 
-## 2. Invocation
+## 2. Invocation and command-line precedence
 
 A QMX-aware QEMU must support:
 
@@ -47,7 +47,23 @@ qemu-system-x86_64 -qmx machine.qmx
 
 When no QMX file is specified, QEMU must follow its normal upstream argument-processing and machine-creation path. QMX must not alter ordinary QEMU defaults or command-line behavior.
 
-Explicit command-line options supplied together with a QMX file override corresponding QMX settings for that invocation. They do not rewrite the QMX file.
+Explicit command-line options supplied together with a QMX file always override the corresponding QMX settings for that invocation. They do not rewrite the QMX file.
+
+The override is parameter-specific. A command-line option that does not specify a QMX parameter does not override that parameter. For example:
+
+```text
+# machine.qmx
+memory = 384M
+cpu = pentium3
+```
+
+```text
+qemu-system-x86_64 -qmx machine.qmx -m 512M
+```
+
+uses 512 MB of memory while retaining `cpu = pentium3` from QMX.
+
+For named repeated objects, a command-line object with the same QEMU `id` replaces the corresponding QMX object. Unrelated QMX objects remain in effect. Command-line media retains normal QEMU failure behavior even when it replaces a QMX-defined drive.
 
 ---
 
@@ -96,7 +112,7 @@ A line whose first non-whitespace character is `#` is a comment.
 memory = 384M
 ```
 
-QMX v0.2 defines no executable comment pragmas.
+QMX v0.2 defines no inline comments and no executable comment pragmas.
 
 ### 3.4 Strings
 
@@ -116,15 +132,19 @@ The minimum escape set is:
 \t   tab
 ```
 
+The parser must reject malformed or unterminated quoted strings and unsupported escape sequences.
+
 The parser must not perform shell evaluation, command substitution, glob expansion, or shell-style word splitting.
 
-### 3.5 Duplicate keys
+### 3.5 Duplicate keys and properties
 
 A scalar key may appear only once.
 
 An object key such as `drive.system` or `device.cdrom` may appear only once.
 
-Duplicate assignments are fatal configuration errors rather than order-dependent overrides.
+Within one property list, a named property may appear only once. An explicit `id=` on a named QMX object must match the identifier in the QMX key.
+
+Duplicate assignments and conflicting IDs are fatal configuration errors rather than order-dependent overrides.
 
 ---
 
@@ -139,6 +159,7 @@ memory = 384M
 cpu = pentium3
 machine = pc,acpi=off
 boot = menu=on,order=ca
+bios = "firmware/bios.bin"
 ```
 
 The value is mapped to the corresponding QEMU configuration family.
@@ -187,6 +208,7 @@ accel
 cpu
 display
 vga
+bios
 boot
 audiodev.<id>
 drive.<id>
@@ -205,7 +227,7 @@ cpu = pentium3
 
 selects Pentium III only because that line is present. Omitting `cpu` leaves CPU selection to normal QEMU behavior.
 
-The same rule applies to memory, accelerator, machine, display, VGA, audio, boot order, devices, and all other QMX settings.
+The same rule applies to memory, accelerator, machine, display, VGA, firmware, audio, boot order, devices, and all other QMX settings.
 
 ---
 
@@ -224,11 +246,14 @@ Windows98/
         windows98se.qcow2
     media/
         Windows98_SE.iso
+    firmware/
+        bios.bin
 ```
 
 QMX:
 
 ```text
+bios = "firmware/bios.bin"
 drive.system = file="disks/windows98se.qcow2",format=qcow2,if=none
 drive.cd = file="media/Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
 nvram = file="state/machine.cmos",format=cmos128,rtc_init=time0
@@ -290,17 +315,19 @@ nvram = file="machine.cmos",format=cmos128,rtc_init=time0
 
 This binary layout is intentionally compatible with the conventional 128-byte CMOS image used by Bochs, but the QMX text format is not a Bochs configuration format.
 
-On compatible x86 PC machine types, QEMU should attach this backing file to the existing MC146818-compatible RTC/CMOS implementation rather than creating a new guest-visible device.
+On compatible x86 PC machine types, QEMU attaches this backing file to the existing MC146818-compatible RTC/CMOS state rather than creating a new guest-visible device.
 
 `rtc_init=time0` means configuration bytes are loaded from the file while current RTC date/time is initialized from QEMU's configured virtual clock base.
 
 `rtc_init=image` means RTC date/time bytes are loaded from the image as well.
 
-Guest writes to CMOS must update the emulated CMOS normally. Modified persistent state should be flushed promptly and on normal QEMU shutdown so firmware changes do not depend on a clean guest OS shutdown.
+Guest writes to CMOS update the emulated CMOS normally. Modified persistent state is flushed promptly and on normal QEMU shutdown so firmware changes do not depend on a clean guest OS shutdown.
 
-If a writable `cmos128` file does not exist, QEMU should create it from the machine's initialized CMOS defaults rather than from arbitrary zero bytes.
+If a writable `cmos128` file does not exist, QEMU creates it from the machine's initialized CMOS defaults rather than from arbitrary zero bytes.
 
-If persistent CMOS cannot be opened, QMX should warn and continue with volatile CMOS unless the format later gains an explicit required-state policy.
+If persistent CMOS cannot be opened, created, or written, QMX warns and continues with volatile CMOS unless the format later gains an explicit required-state policy.
+
+An existing CMOS backing file whose size is not exactly 128 bytes is rejected as persistent state with a warning and QEMU continues with volatile CMOS.
 
 BIOS firmware must not rewrite the QMX file.
 
@@ -326,14 +353,14 @@ QEMU must emit a clear warning identifying the QMX object, resolved path, error 
 Example:
 
 ```text
-QMX warning: drive.cd: cannot open 'D:\VMs\Win98\media\Windows98_SE.iso': No such file or directory; device.cdrom will not be created
+QMX warning: drive.cd: cannot open '/VMs/Win98/media/Windows98_SE.iso': No such file or directory; device.cdrom will not be created
 ```
 
 The implementation must not move a failed device to another bus or slot.
 
-This tolerant behavior applies to media originating from QMX. Existing command-line QEMU failure behavior remains unchanged.
+This tolerant behavior applies only to media originating from QMX. Existing command-line QEMU failure behavior remains unchanged, including when a command-line drive overrides a QMX drive with the same identifier.
 
-Configuration errors remain fatal, including malformed QMX, duplicate keys, invalid syntax, impossible topology, and values rejected by the relevant QEMU subsystem when they are not merely media-availability failures.
+Configuration errors remain fatal, including malformed QMX, duplicate keys, invalid syntax, impossible topology, duplicate explicit slots, invalid QEMU values unrelated to media availability, and inaccessible required firmware or ROM images.
 
 ---
 
@@ -352,6 +379,9 @@ cpu = pentium3
 display = sdl
 vga = cirrus
 
+# Optional firmware override. Relative paths resolve from this QMX file.
+# bios = "bios.bin"
+
 audiodev.snd0 = sdl
 device.sound = sb16,audiodev=snd0
 
@@ -362,8 +392,6 @@ device.hdd = ide-hd,drive=win98hdd,bus=ide.0,unit=0
 
 drive.win98cd = file="Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
 device.cdrom = ide-cd,drive=win98cd,bus=ide.1,unit=0
-
-fw_cfg.setup = name="opt/seabios/setup",string="1"
 
 nvram = file="machine.cmos",format=cmos128,rtc_init=time0
 ```
