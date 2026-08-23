@@ -39,7 +39,6 @@
 #include "target/i386/sev.h"
 
 #define FLASH_SECTOR_SIZE 4096
-#define QMX_DEFAULT_BIOS "bios-qmx.bin"
 
 static void pc_isa_bios_init(PCMachineState *pcms, MemoryRegion *isa_bios,
                              MemoryRegion *rom_memory, MemoryRegion *flash_mem)
@@ -88,10 +87,6 @@ static PFlashCFI01 *pc_pflash_create(PCMachineState *pcms,
     object_property_add_child(OBJECT(pcms), name, OBJECT(dev));
     object_property_add_alias(OBJECT(pcms), alias_prop_name,
                               OBJECT(dev), "drive");
-    /*
-     * The returned reference is tied to the child property and
-     * will be removed with object_unparent.
-     */
     object_unref(OBJECT(dev));
     return PFLASH_CFI01(dev);
 }
@@ -101,10 +96,8 @@ void pc_system_flash_create(PCMachineState *pcms)
     PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
 
     if (pcmc->pci_enabled) {
-        pcms->flash[0] = pc_pflash_create(pcms, "system.flash0",
-                                          "pflash0");
-        pcms->flash[1] = pc_pflash_create(pcms, "system.flash1",
-                                          "pflash1");
+        pcms->flash[0] = pc_pflash_create(pcms, "system.flash0", "pflash0");
+        pcms->flash[1] = pc_pflash_create(pcms, "system.flash1", "pflash1");
     }
 }
 
@@ -126,19 +119,6 @@ void pc_system_flash_cleanup_unused(PCMachineState *pcms)
     }
 }
 
-/*
- * Map the pcms->flash[] from 4GiB downward, and realize.
- * Map them in descending order, i.e. pcms->flash[0] at the top,
- * without gaps.
- * Stop at the first pcms->flash[0] lacking a block backend.
- * Set each flash's size from its block backend.  Fatal error if the
- * size isn't a non-zero multiple of 4KiB, or the total size exceeds
- * pcms->max_fw_size.
- *
- * If pcms->flash[0] has a block backend, its memory is passed to
- * pc_isa_bios_init().  Merging several flash devices for isa-bios is
- * not supported.
- */
 static void pc_system_flash_map(PCMachineState *pcms,
                                 MemoryRegion *rom_memory)
 {
@@ -187,7 +167,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
         }
 
         total_size += size;
-        gpa = 0x100000000ULL - total_size; /* where the flash is mapped */
+        gpa = 0x100000000ULL - total_size;
         qdev_prop_set_uint32(DEVICE(system_flash), "num-blocks",
                              size / FLASH_SECTOR_SIZE);
         sysbus_realize_and_unref(SYS_BUS_DEVICE(system_flash), &error_fatal);
@@ -202,7 +182,6 @@ static void pc_system_flash_map(PCMachineState *pcms,
                 pc_isa_bios_init(pcms, &x86ms->isa_bios, rom_memory, flash_mem);
             }
 
-            /* Encrypt the pflash boot ROM */
             if (sev_enabled()) {
                 flash_ptr = memory_region_get_ram_ptr(flash_mem);
                 flash_size = memory_region_size(flash_mem);
@@ -220,25 +199,18 @@ void pc_system_firmware_init(PCMachineState *pcms,
     BlockBackend *pflash_blk[ARRAY_SIZE(pcms->flash)];
 
     if (!pcmc->pci_enabled) {
-        /*
-         * If an IGVM file is specified then the firmware must be provided
-         * in the IGVM file.
-         */
         if (!X86_MACHINE(pcms)->igvm) {
-            x86_bios_rom_init(X86_MACHINE(pcms), QMX_DEFAULT_BIOS,
-                              rom_memory, true);
+            x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, true);
         }
         return;
     }
 
-    /* Map legacy -drive if=pflash to machine properties */
     for (i = 0; i < ARRAY_SIZE(pcms->flash); i++) {
         pflash_cfi01_legacy_drive(pcms->flash[i],
                                   drive_get(IF_PFLASH, 0, i));
         pflash_blk[i] = pflash_cfi01_get_blk(pcms->flash[i]);
     }
 
-    /* Reject gaps */
     for (i = 1; i < ARRAY_SIZE(pcms->flash); i++) {
         if (pflash_blk[i] && !pflash_blk[i - 1]) {
             error_report("pflash%d requires pflash%d", i, i - 1);
@@ -247,21 +219,11 @@ void pc_system_firmware_init(PCMachineState *pcms,
     }
 
     if (!pflash_blk[0]) {
-        /*
-         * Machine property pflash0 not set, use ROM mode unless using IGVM,
-         * in which case the firmware must be provided by the IGVM file.
-         */
         if (!X86_MACHINE(pcms)->igvm) {
-            x86_bios_rom_init(X86_MACHINE(pcms), QMX_DEFAULT_BIOS,
-                              rom_memory, false);
+            x86_bios_rom_init(X86_MACHINE(pcms), "bios.bin", rom_memory, false);
         }
     } else {
         if (kvm_enabled() && !kvm_readonly_mem_enabled()) {
-            /*
-             * Older KVM cannot execute from device memory. So, flash
-             * memory cannot be used unless the readonly memory kvm
-             * capability is present.
-             */
             error_report("pflash with kvm requires KVM readonly memory support");
             exit(1);
         }
@@ -271,10 +233,6 @@ void pc_system_firmware_init(PCMachineState *pcms,
 
     pc_system_flash_cleanup_unused(pcms);
 
-    /*
-     * The user should not have specified any pflash devices when using IGVM
-     * to configure the guest.
-     */
     if (X86_MACHINE(pcms)->igvm) {
         for (i = 0; i < ARRAY_SIZE(pcms->flash); i++) {
             if (pcms->flash[i]) {
