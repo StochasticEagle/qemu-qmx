@@ -50,30 +50,35 @@ jobs:
           rm -rf artifacts build-release stage-release
           mkdir -p artifacts/source artifacts/debian artifacts/rpm artifacts/arch
 
-      - name: Build self-contained source archive
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          archive="$RUNNER_TEMP/qemu-qmx-${VERSION}-source.tar.gz"
-          tar \
-            --exclude-vcs \
-            --exclude='./build*' \
-            --exclude='./artifacts' \
-            --exclude='./stage-release' \
-            --transform="s,^\./,qemu-qmx-${VERSION}/," \
-            -czf "$archive" .
-          cp "$archive" "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz"
-          sha256sum "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz" \
-            > "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz.sha256"
-
       - name: Install build dependencies
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential binutils make meson ninja-build pkg-config python3 \
+            build-essential binutils ccache make meson ninja-build pkg-config python3 \
             libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
+
+      - name: Compute same-day cache key
+        id: cache-key
+        shell: bash
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore same-day compiler cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ccache
+          key: qemu-qmx-ccache-${{ runner.os }}-${{ steps.cache-key.outputs.day }}-${{ hashFiles('**/*.c', '**/*.h', '**/*.S', '**/*.s', '**/meson.build', 'configure', 'Makefile', 'roms/seabios/**') }}
+          restore-keys: |
+            qemu-qmx-ccache-${{ runner.os }}-${{ steps.cache-key.outputs.day }}-
+
+      - name: Configure compiler cache
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.cache/ccache"
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --max-size=2G
+          ccache --zero-stats
 
       - name: Build full QEMU-QMX and SeaBIOS once
         shell: bash
@@ -97,6 +102,7 @@ jobs:
             tools/qmx-verify-gui.c \
             -o build-release/qmx-verify-gui \
             $(pkg-config --cflags --libs sdl2)
+          ccache --show-stats
 
       - name: Test the single full build
         shell: bash
@@ -116,6 +122,23 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Build self-contained source archive
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          archive="$RUNNER_TEMP/qemu-qmx-${VERSION}-source.tar.gz"
+          tar \
+            --exclude-vcs \
+            --exclude='./build*' \
+            --exclude='./artifacts' \
+            --exclude='./stage-release' \
+            --transform="s,^\./,qemu-qmx-${VERSION}/," \
+            -czf "$archive" .
+          cp "$archive" "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz"
+          sha256sum "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz" \
+            > "artifacts/source/qemu-qmx-${VERSION}-source.tar.gz.sha256"
 
       - name: Stage canonical release payload
         shell: bash
@@ -211,7 +234,16 @@ jobs:
               mkdir -p /rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
               tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
               find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
-              qemu_packages="$(dnf repoquery --qf "%{name}" "qemu*" 2>/dev/null | grep -E "^qemu($|-)" | grep -v "^qemu-qmx$" | sort -u)"
+              qemu_packages="$(
+                dnf repoquery --available --qf "%{name}" 2>/dev/null \
+                  | awk '\''/^qemu($|-)/ && $0 != "qemu-qmx"'\'' \
+                  | sort -u
+              )"
+              if [[ -z "$qemu_packages" ]]; then
+                echo "Fedora repository query returned no qemu-* packages; refusing to build incomplete replacement metadata." >&2
+                dnf repoquery --available --qf "%{name}" 2>&1 | grep -E "^qemu($|-)" >&2 || true
+                exit 1
+              fi
               {
                 printf "%s\n" \
                   "Name:           qemu-qmx" \
