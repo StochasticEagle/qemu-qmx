@@ -1,0 +1,177 @@
+name: QEMU-QMX 0.9 Beta Release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/qemu-qmx-0.9-release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qemu-qmx-0.9.0-beta.1-release
+  cancel-in-progress: false
+
+env:
+  TAG: qemu-qmx-v0.9.0-beta.1
+  VERSION: 0.9.0-beta.1
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.release_sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Verify release version
+        run: test "$(cat QMX_VERSION)" = "$VERSION"
+      - name: Record release commit
+        id: release_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Create release tag
+        run: |
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            test "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)"
+          else
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git tag -a "$TAG" -m "QEMU-QMX $VERSION"
+            git push origin "$TAG"
+          fi
+
+  source:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+          submodules: recursive
+      - name: Create self-contained source archive
+        run: |
+          tar --exclude-vcs --exclude='./build*' \
+            --transform="s,^\./,qemu-qmx-${VERSION}/," \
+            -czf "qemu-qmx-${VERSION}-source.tar.gz" .
+          sha256sum "qemu-qmx-${VERSION}-source.tar.gz" > "qemu-qmx-${VERSION}-source.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source
+          path: |
+            qemu-qmx-${{ env.VERSION }}-source.tar.gz
+            qemu-qmx-${{ env.VERSION }}-source.tar.gz.sha256
+
+  debian:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          submodules: recursive
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential debhelper devscripts dpkg-dev ninja-build meson pkg-config \
+            python3 python3-venv libglib2.0-dev libpixman-1-dev libslirp-dev \
+            libsdl2-dev zlib1g-dev
+      - name: Build Debian package
+        run: |
+          cp -a packaging/debian debian
+          dpkg-buildpackage -b -us -uc
+          mkdir -p dist
+          cp ../qemu-qmx_*.deb dist/
+          sha256sum dist/*.deb > dist/SHA256SUMS-debian
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian
+          path: dist/*
+
+  rpm:
+    needs: tag
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Install build dependencies
+        run: |
+          dnf -y install \
+            rpm-build gcc binutils make glib2-devel libslirp-devel meson ninja-build \
+            pixman-devel pkgconf-pkg-config python3 SDL2-devel zlib-devel curl tar gzip
+      - name: Prepare RPM sources
+        run: |
+          mkdir -p "$PWD/rpmbuild/SOURCES" "$PWD/dist"
+          curl -L "https://github.com/StochasticEagle/qemu-qmx/archive/refs/tags/${TAG}.tar.gz" \
+            -o "$PWD/rpmbuild/SOURCES/${TAG}.tar.gz"
+          curl -L "https://github.com/StochasticEagle/seabios-setupmenu/archive/e0b009af38836aa5d1d55713d470721835f03664.tar.gz" \
+            -o "$PWD/rpmbuild/SOURCES/e0b009af38836aa5d1d55713d470721835f03664.tar.gz"
+      - name: Build RPM
+        run: |
+          rpmbuild -ba packaging/rpm/qemu-qmx.spec \
+            --define "_topdir $PWD/rpmbuild" \
+            --define "_sourcedir $PWD/rpmbuild/SOURCES"
+          find rpmbuild/RPMS -name '*.rpm' -exec cp -v {} dist/ \;
+          sha256sum dist/*.rpm > dist/SHA256SUMS-rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: dist/*
+
+  arch:
+    needs: tag
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed \
+            git gcc binutils make meson ninja python pkgconf glib2 pixman zlib libslirp sdl2-compat
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: Build Arch package
+        run: |
+          su builder -c "cd '$GITHUB_WORKSPACE/packaging/arch' && makepkg --noconfirm"
+          mkdir -p dist
+          cp packaging/arch/qemu-qmx-*.pkg.tar.* dist/
+          sha256sum dist/qemu-qmx-*.pkg.tar.* > dist/SHA256SUMS-arch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: dist/*
+
+  release:
+    needs: [tag, source, debian, rpm, arch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+      - name: Consolidate checksums
+        run: |
+          cd release-artifacts
+          sha256sum qemu-qmx-${VERSION}-source.tar.gz *.deb *.rpm qemu-qmx-*.pkg.tar.* > SHA256SUMS
+      - name: Create GitHub prerelease and upload artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "QEMU-QMX $VERSION" \
+            --notes-file docs/releases/QMX_0.9.0-beta.1.md \
+            --prerelease \
+            release-artifacts/*
