@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    name: Build once, package, and publish
+    name: Build, package, and publish
     runs-on: ubuntu-latest
 
     steps:
@@ -38,7 +38,7 @@ jobs:
             exit 1
           fi
 
-      - name: Check out source once
+      - name: Check out source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -84,7 +84,7 @@ jobs:
           echo "ccache statistics before build:"
           ccache --show-stats
 
-      - name: Build full QEMU-QMX and SeaBIOS once
+      - name: Build full QEMU-QMX and SeaBIOS
         shell: bash
         run: |
           make -C roms/seabios
