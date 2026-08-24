@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version without the qemu-qmx-v prefix
+        description: Release version
         required: true
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Prepare artifact directories
@@ -115,7 +115,7 @@ jobs:
           echo "ccache statistics after build:"
           ccache --show-stats
 
-      - name: Test the single full build
+      - name: Test the build
         shell: bash
         run: |
           python3 tests/qmx/test-qmx-parser.py build-release/qemu-system-x86_64
@@ -194,159 +194,172 @@ jobs:
           test -f stage-release/usr/share/mime/packages/qemu-qmx.xml
           test -f stage-release/usr/share/kio/servicemenus/qemu-qmx-verify.desktop
 
-      - name: Package Debian / apt
+      - name: Package Debian, Fedora, and Arch in parallel
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          docker run --rm \
-            -e VERSION="$VERSION" \
-            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
-            -v "$GITHUB_WORKSPACE/artifacts/debian:/out" \
-            debian:trixie \
-            bash -euxo pipefail -c '
-              apt-get update
-              apt-get install -y dpkg-dev libc6 libglib2.0-0t64 libpixman-1-0 libslirp0 libsdl2-2.0-0 libsndio7.0 zlib1g
-              mkdir -p /pkg/DEBIAN /tmp/debian
-              cp -a /stage/. /pkg/
-              printf "%s\n" \
-                "Source: qemu-qmx" \
-                "Section: otherosfs" \
-                "Priority: optional" \
-                "Maintainer: QEMU-QMX Project <noreply@github.com>" \
-                "" \
-                "Package: qemu-qmx" \
-                "Architecture: amd64" \
-                "Description: Complete QEMU build with QMX configuration support" \
-                > /tmp/debian/control
-              cd /tmp
-              deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 -e/pkg/usr/bin/qemu-img -e/pkg/usr/libexec/qemu-qmx/qmx-verify-gui | sed -n "s/^shlibs:Depends=//p")"
-              qemu_packages="$(apt-cache pkgnames | grep -E "^qemu($|-)" | grep -v "^qemu-qmx$" | sort -u | paste -sd, - | sed "s/,/, /g")"
-              printf "%s\n" \
-                "Package: qemu-qmx" \
-                "Version: 1:11.1.50+qmx0.9.0~beta1-1" \
-                "Section: otherosfs" \
-                "Priority: optional" \
-                "Architecture: amd64" \
-                "Maintainer: QEMU-QMX Project <noreply@github.com>" \
-                "Depends: ${deps}" \
-                "Provides: qemu-system-x86, qemu-system-common, qemu-system-data, qemu-utils, qemu-user, qemu-user-static, qemu-guest-agent, seabios" \
-                "Conflicts: ${qemu_packages}, seabios" \
-                "Breaks: ${qemu_packages}, seabios" \
-                "Replaces: ${qemu_packages}, seabios" \
-                "Description: Complete QEMU build with QMX configuration support" \
-                " QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
-                " It installs the full QEMU build at the standard system paths and adds QMX" \
-                " machine-configuration support to the x86 system emulators." \
-                > /pkg/DEBIAN/control
-              dpkg-deb --root-owner-group --build /pkg "/out/qemu-qmx_${VERSION}_amd64.deb"
-              sha256sum /out/*.deb > /out/SHA256SUMS-debian
-            '
+          set -uo pipefail
 
-      - name: Package Fedora / dnf
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          docker run --rm \
-            -e VERSION="$VERSION" \
-            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
-            -v "$GITHUB_WORKSPACE/artifacts/rpm:/out" \
-            fedora:latest \
-            bash -euxo pipefail -c '
-              dnf -y install rpm-build tar gzip dnf-plugins-core
-              mkdir -p /rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-              tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
-              find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
-              qemu_packages="$(
-                dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>/dev/null \
-                  | awk '\''/^qemu($|-)/ && $0 != "qemu-qmx"'\'' \
-                  | sort -u
-              )"
-              if [[ -z "$qemu_packages" ]]; then
-                echo "Fedora repository query returned no qemu-* packages; refusing to build incomplete replacement metadata." >&2
-                dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>&1 >&2 || true
-                exit 1
-              fi
-              {
+          package_debian() {
+            docker run --rm \
+              -e VERSION="$VERSION" \
+              -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
+              -v "$GITHUB_WORKSPACE/artifacts/debian:/out" \
+              debian:trixie \
+              bash -euxo pipefail -c '
+                apt-get update
+                apt-get install -y dpkg-dev libc6 libglib2.0-0t64 libpixman-1-0 libslirp0 libsdl2-2.0-0 libsndio7.0 zlib1g
+                mkdir -p /pkg/DEBIAN /tmp/debian
+                cp -a /stage/. /pkg/
                 printf "%s\n" \
-                  "Name:           qemu-qmx" \
-                  "Epoch:          2" \
-                  "Version:        11.1.50" \
-                  "Release:        0.9.0.beta1%{?dist}" \
-                  "Summary:        Complete QEMU build with QMX machine configuration support" \
-                  "License:        GPL-2.0-or-later" \
-                  "Source0:        qemu-qmx-payload.tar.gz" \
-                  "BuildArch:      x86_64"
-                while IFS= read -r pkg; do
-                  test -n "$pkg" || continue
-                  printf "Provides:       %s\n" "$pkg"
-                  printf "Conflicts:      %s\n" "$pkg"
-                  printf "Obsoletes:      %s\n" "$pkg"
-                done <<< "$qemu_packages"
+                  "Source: qemu-qmx" \
+                  "Section: otherosfs" \
+                  "Priority: optional" \
+                  "Maintainer: QEMU-QMX Project <noreply@github.com>" \
+                  "" \
+                  "Package: qemu-qmx" \
+                  "Architecture: amd64" \
+                  "Description: Complete QEMU build with QMX configuration support" \
+                  > /tmp/debian/control
+                cd /tmp
+                deps="$(dpkg-shlibdeps -O -e/pkg/usr/bin/qemu-system-x86_64 -e/pkg/usr/bin/qemu-system-i386 -e/pkg/usr/bin/qemu-img -e/pkg/usr/libexec/qemu-qmx/qmx-verify-gui | sed -n "s/^shlibs:Depends=//p")"
+                qemu_packages="$(apt-cache pkgnames | grep -E "^qemu($|-)" | grep -v "^qemu-qmx$" | sort -u | paste -sd, - | sed "s/,/, /g")"
                 printf "%s\n" \
-                  "Provides:       seabios-bin" \
-                  "Conflicts:      seabios-bin" \
-                  "Obsoletes:      seabios-bin" \
-                  "" \
-                  "%description" \
-                  "QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
-                  "It installs the full QEMU build at the standard system paths and adds QMX" \
-                  "machine-configuration support to the x86 system emulators." \
-                  "" \
-                  "%prep" \
-                  "mkdir payload" \
-                  "tar -xzf %{SOURCE0} -C payload" \
-                  "" \
-                  "%install" \
-                  "mkdir -p %{buildroot}" \
-                  "cp -a payload/. %{buildroot}/" \
-                  "" \
-                  "%files -f %{_sourcedir}/files.list"
-              } > /rpmbuild/SPECS/qemu-qmx.spec
-              rpmbuild -bb /rpmbuild/SPECS/qemu-qmx.spec --define "_topdir /rpmbuild"
-              find /rpmbuild/RPMS -name "*.rpm" -exec cp -v {} /out/ \;
-              sha256sum /out/*.rpm > /out/SHA256SUMS-rpm
-            '
+                  "Package: qemu-qmx" \
+                  "Version: 1:11.1.50+qmx0.9.0~beta1-1" \
+                  "Section: otherosfs" \
+                  "Priority: optional" \
+                  "Architecture: amd64" \
+                  "Maintainer: QEMU-QMX Project <noreply@github.com>" \
+                  "Depends: ${deps}" \
+                  "Provides: qemu-system-x86, qemu-system-common, qemu-system-data, qemu-utils, qemu-user, qemu-user-static, qemu-guest-agent, seabios" \
+                  "Conflicts: ${qemu_packages}, seabios" \
+                  "Breaks: ${qemu_packages}, seabios" \
+                  "Replaces: ${qemu_packages}, seabios" \
+                  "Description: Complete QEMU build with QMX configuration support" \
+                  " QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
+                  " It installs the full QEMU build at the standard system paths and adds QMX" \
+                  " machine-configuration support to the x86 system emulators." \
+                  > /pkg/DEBIAN/control
+                dpkg-deb --root-owner-group --build /pkg "/out/qemu-qmx_${VERSION}_amd64.deb"
+                sha256sum /out/*.deb > /out/SHA256SUMS-debian
+              '
+          }
 
-      - name: Package Arch / pacman
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          docker run --rm \
-            -e VERSION="$VERSION" \
-            -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
-            -v "$GITHUB_WORKSPACE/artifacts/arch:/out" \
-            archlinux:base-devel \
-            bash -euxo pipefail -c '
-              pacman -Syu --noconfirm
-              pacman -S --noconfirm --needed glib2 pixman zlib libslirp sdl2-compat
-              useradd -m builder
-              mkdir -p /build
-              qemu_conflicts="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
-              qemu_provides="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2 \"=\" \$3}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
-              printf "%s\n" \
-                "pkgname=qemu-qmx" \
-                "pkgver=11.1.50.qmx0.9.0beta1" \
-                "pkgrel=1" \
-                "pkgdesc=\"Complete QEMU build with QMX machine configuration support\"" \
-                "arch=(\"x86_64\")" \
-                "license=(\"GPL-2.0-or-later\")" \
-                "depends=(\"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
-                "provides=(${qemu_provides})" \
-                "conflicts=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
-                "replaces=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
-                "" \
-                "package() {" \
-                "  cp -a /stage/. \"\$pkgdir/\"" \
-                "}" \
-                > /build/PKGBUILD
-              chown -R builder:builder /build
-              su builder -c "cd /build && makepkg --noconfirm"
-              cp /build/qemu-qmx-*.pkg.tar.* /out/
-              sha256sum /out/qemu-qmx-*.pkg.tar.* > /out/SHA256SUMS-arch
-            '
+          package_fedora() {
+            docker run --rm \
+              -e VERSION="$VERSION" \
+              -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
+              -v "$GITHUB_WORKSPACE/artifacts/rpm:/out" \
+              fedora:latest \
+              bash -euxo pipefail -c '
+                dnf -y install rpm-build tar gzip dnf-plugins-core
+                mkdir -p /rpmbuild/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+                tar -C /stage -czf /rpmbuild/SOURCES/qemu-qmx-payload.tar.gz .
+                find /stage \( -type f -o -type l \) -printf "/%P\n" > /rpmbuild/SOURCES/files.list
+                qemu_packages="$(
+                  dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>/dev/null \
+                    | awk '\''/^qemu($|-)/ && $0 != "qemu-qmx"'\'' \
+                    | sort -u
+                )"
+                if [[ -z "$qemu_packages" ]]; then
+                  echo "Fedora repository query returned no qemu-* packages; refusing to build incomplete replacement metadata." >&2
+                  dnf repoquery --available --qf "%{name}\\n" "qemu*" 2>&1 >&2 || true
+                  exit 1
+                fi
+                {
+                  printf "%s\n" \
+                    "Name:           qemu-qmx" \
+                    "Epoch:          2" \
+                    "Version:        11.1.50" \
+                    "Release:        0.9.0.beta1%{?dist}" \
+                    "Summary:        Complete QEMU build with QMX machine configuration support" \
+                    "License:        GPL-2.0-or-later" \
+                    "Source0:        qemu-qmx-payload.tar.gz" \
+                    "BuildArch:      x86_64"
+                  while IFS= read -r pkg; do
+                    test -n "$pkg" || continue
+                    printf "Provides:       %s\n" "$pkg"
+                    printf "Conflicts:      %s\n" "$pkg"
+                    printf "Obsoletes:      %s\n" "$pkg"
+                  done <<< "$qemu_packages"
+                  printf "%s\n" \
+                    "Provides:       seabios-bin" \
+                    "Conflicts:      seabios-bin" \
+                    "Obsoletes:      seabios-bin" \
+                    "" \
+                    "%description" \
+                    "QEMU-QMX is a complete system replacement for the distribution QEMU packages." \
+                    "It installs the full QEMU build at the standard system paths and adds QMX" \
+                    "machine-configuration support to the x86 system emulators." \
+                    "" \
+                    "%prep" \
+                    "mkdir payload" \
+                    "tar -xzf %{SOURCE0} -C payload" \
+                    "" \
+                    "%install" \
+                    "mkdir -p %{buildroot}" \
+                    "cp -a payload/. %{buildroot}/" \
+                    "" \
+                    "%files -f %{_sourcedir}/files.list"
+                } > /rpmbuild/SPECS/qemu-qmx.spec
+                rpmbuild -bb /rpmbuild/SPECS/qemu-qmx.spec --define "_topdir /rpmbuild"
+                find /rpmbuild/RPMS -name "*.rpm" -exec cp -v {} /out/ \;
+                sha256sum /out/*.rpm > /out/SHA256SUMS-rpm
+              '
+          }
+
+          package_arch() {
+            docker run --rm \
+              -e VERSION="$VERSION" \
+              -v "$GITHUB_WORKSPACE/stage-release:/stage:ro" \
+              -v "$GITHUB_WORKSPACE/artifacts/arch:/out" \
+              archlinux:base-devel \
+              bash -euxo pipefail -c '
+                pacman -Syu --noconfirm
+                pacman -S --noconfirm --needed glib2 pixman zlib libslirp sdl2-compat
+                useradd -m builder
+                mkdir -p /build
+                qemu_conflicts="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
+                qemu_provides="$(pacman -Sl | awk "\$2 ~ /^qemu-/ {print \$2 \"=\" \$3}" | sort -u | awk "{printf \"\\\"%s\\\" \", \$1}")"
+                printf "%s\n" \
+                  "pkgname=qemu-qmx" \
+                  "pkgver=11.1.50.qmx0.9.0beta1" \
+                  "pkgrel=1" \
+                  "pkgdesc=\"Complete QEMU build with QMX machine configuration support\"" \
+                  "arch=(\"x86_64\")" \
+                  "license=(\"GPL-2.0-or-later\")" \
+                  "depends=(\"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
+                  "provides=(${qemu_provides})" \
+                  "conflicts=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
+                  "replaces=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
+                  "" \
+                  "package() {" \
+                  "  cp -a /stage/. \"\$pkgdir/\"" \
+                  "}" \
+                  > /build/PKGBUILD
+                chown -R builder:builder /build
+                su builder -c "cd /build && makepkg --noconfirm"
+                cp /build/qemu-qmx-*.pkg.tar.* /out/
+                sha256sum /out/qemu-qmx-*.pkg.tar.* > /out/SHA256SUMS-arch
+              '
+          }
+
+          package_debian &
+          debian_pid=$!
+
+          package_fedora &
+          fedora_pid=$!
+
+          package_arch &
+          arch_pid=$!
+
+          status=0
+          wait "$debian_pid" || { echo "Debian packaging failed." >&2; status=1; }
+          wait "$fedora_pid" || { echo "Fedora packaging failed." >&2; status=1; }
+          wait "$arch_pid" || { echo "Arch packaging failed." >&2; status=1; }
+          exit "$status"
 
       - name: Verify release payload
         shell: bash
@@ -373,7 +386,7 @@ jobs:
           path: artifacts/
           if-no-files-found: error
 
-      - name: Publish beta release
+      - name: Publish release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
