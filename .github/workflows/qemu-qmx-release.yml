@@ -56,7 +56,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential binutils ccache make meson ninja-build pkg-config python3 \
-            libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
+            libfdt-dev libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
 
       - name: Compute same-day cache key
         id: cache-key
@@ -103,7 +103,8 @@ jobs:
             --enable-sdl \
             --enable-slirp \
             --enable-tools \
-            --enable-guest-agent
+            --enable-guest-agent \
+            --enable-fdt=system
           ninja
           cd ..
           cc -O2 -Wall -Wextra \
@@ -172,6 +173,7 @@ jobs:
           install -Dm0644 packaging/linux/qemu-qmx-verify.desktop stage-release/usr/share/applications/qemu-qmx-verify.desktop
           install -Dm0644 packaging/linux/qemu-qmx.xml stage-release/usr/share/mime/packages/qemu-qmx.xml
           install -Dm0644 packaging/linux/qemu-qmx-verify-kde.desktop stage-release/usr/share/kio/servicemenus/qemu-qmx-verify.desktop
+          rm -rf stage-release/var/run
           test -x stage-release/usr/bin/qemu-system-x86_64
           test -x stage-release/usr/bin/qemu-system-i386
           test -x stage-release/usr/bin/qemu-system-aarch64
@@ -325,10 +327,10 @@ jobs:
                 "pkgdesc=\"Complete QEMU build with QMX machine configuration support\"" \
                 "arch=(\"x86_64\")" \
                 "license=(\"GPL-2.0-or-later\")" \
-                "depends=(\"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
+                "depends=(\"dtc\" \"glib2\" \"pixman\" \"zlib\" \"libslirp\" \"sdl2-compat\")" \
                 "provides=(${qemu_provides})" \
-                "conflicts=(${qemu_conflicts})" \
-                "replaces=(${qemu_conflicts})" \
+                "conflicts=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
+                "replaces=(${qemu_conflicts} \"seabios\" \"edk2-aarch64\" \"edk2-riscv64\")" \
                 "" \
                 "package() {" \
                 "  cp -a /stage/. \"\$pkgdir/\"" \
