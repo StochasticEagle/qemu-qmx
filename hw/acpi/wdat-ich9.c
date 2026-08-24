@@ -17,7 +17,7 @@
             .access_width = AML_WORD_ACC, };
 
 /*
- *   "Hardware Watchdog Timers DesignÂSpecification"
+ *   "Hardware Watchdog Timers DesignÂ Specification"
  *       https://uefi.org/acpi 'Watchdog Action Table (WDAT)'
  *
  *   ICH9 specific implementation.

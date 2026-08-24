@@ -63,7 +63,7 @@ class UpdateSubprojects:
             msg = f"build.rs changed from {orig_dir} to {registry_namever}"
 
         if msg:
-            print(f"�️  Warning: {msg}")
+            print(f"⚠️  Warning: {msg}")
             print("   This may affect the build process - please review the differences.")
 
     def update_subproject(self, wrap_file: str, registry_namever: str) -> None:

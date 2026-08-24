@@ -139,6 +139,6 @@ IO page tables. This may impact the performance. In order to mitigate this,
 please make sure to specify ``-mem-prealloc`` parameter to the destination VM
 boot parameters.
 
-Though both UADK and ZLIB are based on the deflate compressionÂalgorithm, UADK
+Though both UADK and ZLIB are based on the deflate compressionÂ algorithm, UADK
 is not fully compatible with ZLIB. Hence, please make sure to use ``uadk`` on
 both source and destination during migration.
