@@ -1,6 +1,6 @@
-# QMX Minimum Implementation Requirements v0.1
+# QMX Minimum Implementation Requirements v0.9
 
-This document supplements `QMX_Format_Specification_v0.2.md` and defines the minimum acceptance requirements for the first usable QMX implementation.
+This document supplements `QMX_Format_Specification_v0.9.md` and defines the minimum acceptance requirements for the first usable QMX implementation.
 
 ## 1. QMX is additive
 
