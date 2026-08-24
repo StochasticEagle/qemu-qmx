@@ -19,7 +19,7 @@
                  .access_width = AML_DWORD_ACC };
 
 /*
- *   "Hardware Watchdog Timers DesignÂSpecification"
+ *   "Hardware Watchdog Timers DesignÂ Specification"
  *       https://uefi.org/acpi 'Watchdog Action Table (WDAT)'
  */
 void build_gwdt_wdat(GArray *table_data, BIOSLinker *linker, const char *oem_id,

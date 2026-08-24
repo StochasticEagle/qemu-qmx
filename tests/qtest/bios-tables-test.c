@@ -2477,7 +2477,7 @@ static void test_acpi_aarch64_virt_smmuv3_dev(void)
      * The setup includes three PCie root complexes, two of which are
      * connected to separate SMMUv3 devices. The resulting IORT table
      * contains two SMMUv3 nodes and a Root Complex node with ID mappings
-     * of which two of theÂID mappings have output references pointing
+     * of which two of theÂ ID mappings have output references pointing
      * to two different SMMUv3 nodes and the remaining ones pointing to
      * ITS.
      */

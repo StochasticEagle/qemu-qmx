@@ -13,7 +13,7 @@
 
 /*
  * Watchdog actions as described in
- *  "Hardware Watchdog Timers DesignÂSpecification"
+ *  "Hardware Watchdog Timers DesignÂ Specification"
  * for link to spec see https://uefi.org/acpi
  *     'Watchdog Action Table (WDAT)'
  */
