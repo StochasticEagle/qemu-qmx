@@ -246,7 +246,7 @@ div[class^="highlight"] pre {
 }
 
 .qapi-deprecated::before {
-    content: '⚠️ ';
+    content: '�️ ';
 }
 
 .qapi-ifcond::before {
