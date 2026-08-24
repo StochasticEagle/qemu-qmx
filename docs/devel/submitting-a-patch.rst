@@ -184,9 +184,9 @@ a bug in another public bug tracker, you can also use a line with
 
 Example::
 
- Fixes:Â 14055ce53c2dÂ ("s390x/tcg:Â avoidÂ overflowsÂ inÂ time2tod/tod2time")
- Resolves:Â https://gitlab.com/qemu-project/qemu/-/issues/42
- Buglink:Â https://bugs.launchpad.net/qemu/+bug/1804323``
+ Fixes:Â14055ce53c2dÂ("s390x/tcg:ÂavoidÂoverflowsÂinÂtime2tod/tod2time")
+ Resolves:Âhttps://gitlab.com/qemu-project/qemu/-/issues/42
+ Buglink:Âhttps://bugs.launchpad.net/qemu/+bug/1804323``
 
 Some other tags that are used in commit messages include "Message-Id:"
 "Tested-by:", "Acked-by:", "Reported-by:", "Suggested-by:".  See ``git
@@ -324,7 +324,7 @@ for learning the most common committers for the files you touched.
 
 Example::
 
-    ~/src/qemu/scripts/get_maintainer.plÂ -fÂ hw/ide/core.c
+    ~/src/qemu/scripts/get_maintainer.plÂ-fÂhw/ide/core.c
 
 In fact, you can automate this, via a one-time setup of ``git config
 sendemail.cccmd 'scripts/get_maintainer.pl --nogit-fallback'`` (Refer to

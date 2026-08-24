@@ -165,7 +165,7 @@ The idef-parser is built using the ``flex`` and ``bison``.
 ``flex`` is used to split the input string into tokens, each described using a
 regular expression. The token description is contained in the
 ``idef-parser.lex`` source file. The flex-generated scanner takes care also to
-extract from the input text other meaningful information, e.g.,Â the numerical
+extract from the input text other meaningful information, e.g.,Âthe numerical
 value in case of an immediate constant, and decorates the token with the
 extracted information.
 
