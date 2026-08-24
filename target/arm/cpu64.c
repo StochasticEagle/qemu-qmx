@@ -771,7 +771,7 @@ static void kvm_arm_set_cpreg_mig_tolerances(ARMCPU *cpu)
                                      0, 0, ToleranceNotOnBothEnds);
     /*
      * PIRE0_EL1 and PIR_EL1 were erroneously unconditionnally exposed
-     * before linux v6.13. See commit a68cddbe47efÂ("KVM: arm64: Hide
+     * before linux v6.13. See commit a68cddbe47efÂ ("KVM: arm64: Hide
      * S1PIE registers from userspace when disabled for guests")
      */
     arm_register_cpreg_mig_tolerance(cpu, ARM64_SYS_REG(3, 0, 10, 2, 2),
