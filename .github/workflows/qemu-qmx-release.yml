@@ -58,19 +58,14 @@ jobs:
             build-essential binutils ccache make meson ninja-build pkg-config python3 \
             libfdt-dev libglib2.0-dev libpixman-1-dev libslirp-dev libsdl2-dev zlib1g-dev
 
-      - name: Compute same-day cache key
-        id: cache-key
-        shell: bash
-        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-
-      - name: Restore same-day compiler cache
+      - name: Restore compiler cache
         id: ccache-restore
         uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ccache
-          key: qemu-qmx-ccache-${{ runner.os }}-${{ steps.cache-key.outputs.day }}-${{ hashFiles('**/*.c', '**/*.h', '**/*.S', '**/*.s', '**/meson.build', 'configure', 'Makefile', 'roms/seabios/**') }}
+          key: qemu-qmx-ccache-${{ runner.os }}-${{ hashFiles('**/*.c', '**/*.h', '**/*.S', '**/*.s', '**/meson.build', 'configure', 'Makefile', 'roms/seabios/**') }}
           restore-keys: |
-            qemu-qmx-ccache-${{ runner.os }}-${{ steps.cache-key.outputs.day }}-
+            qemu-qmx-ccache-${{ runner.os }}-
 
       - name: Configure compiler cache
         shell: bash
@@ -139,7 +134,7 @@ jobs:
             fi
           done
 
-      - name: Save same-day compiler cache
+      - name: Save compiler cache
         if: steps.ccache-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
