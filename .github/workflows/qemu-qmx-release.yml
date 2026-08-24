@@ -79,7 +79,7 @@ jobs:
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
           echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
-          ccache --max-size=8G
+          ccache --max-size=6G
           ccache --zero-stats
           echo "Resolved compilers:"
           command -v cc
