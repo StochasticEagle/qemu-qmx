@@ -77,8 +77,9 @@ jobs:
         run: |
           mkdir -p "$HOME/.cache/ccache"
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
-          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
-          ccache --max-size=2G
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          ccache --max-size=8G
           ccache --zero-stats
           echo "Resolved compilers:"
           command -v cc
@@ -95,6 +96,9 @@ jobs:
           mkdir build-release
           cd build-release
           ../configure \
+            --cc="ccache gcc" \
+            --cxx="ccache g++" \
+            --host-cc="ccache gcc" \
             --prefix=/usr \
             --libdir=/usr/lib \
             --enable-system \
@@ -105,6 +109,8 @@ jobs:
             --enable-tools \
             --enable-guest-agent \
             --enable-fdt=system
+          echo "Verifying QEMU/Meson compiler launcher:"
+          grep -n "ccache" config-meson.cross
           ninja
           cd ..
           cc -O2 -Wall -Wextra \
