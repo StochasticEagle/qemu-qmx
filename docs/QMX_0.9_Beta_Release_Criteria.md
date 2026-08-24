@@ -55,3 +55,9 @@ The internal QMX representation should remain suitable for future conversion too
 ## Release boundary
 
 After a clean build and successful execution of both QMX test scripts, the QMX feature set is considered ready for the 0.9 beta release. Further work before 1.0 should prioritize compatibility testing, diagnostics, and regression fixes rather than new QMX language features.
+
+
+## Install
+
+#### Arch
+sudo pacman -U --noconfirm --ask=4 ./qemu-qmx-11.1.50.qmx0.9.0beta1-1-x86_64.pkg.tar.zst
