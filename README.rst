@@ -54,7 +54,7 @@ of other UNIX targets. The simple steps to build QEMU are:
 
   mkdir build
   cd build
-  ../configure
+  ../configure --with-pkgversion=qmx --enable-opengl --enable-gtk --enable-virglrenderer
   make
 
 Additional information can also be found online via the QEMU website:
