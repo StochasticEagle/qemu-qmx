@@ -7,7 +7,7 @@
 
 ---
 
-## 1. Design principles
+## 1. Design Principles
 
 QMX is a declarative VM configuration file for QEMU. It is not a shell script and it is not a Bochs configuration format.
 
@@ -36,7 +36,7 @@ QMX does not require or attempt direct configuration-file compatibility with ano
 
 ---
 
-## 2. Invocation and command-line precedence
+## 2. Invocation and Command-Line Precedence
 
 A QMX-aware QEMU must support:
 
@@ -69,7 +69,7 @@ For named repeated objects, a command-line object with the same QEMU `id` replac
 
 ## 3. Grammar
 
-### 3.1 Line grammar
+### 3.1 Line Grammar
 
 A QMX document consists of blank lines, comments, and assignments.
 
@@ -136,7 +136,7 @@ The parser must reject malformed or unterminated quoted strings and unsupported 
 
 The parser must not perform shell evaluation, command substitution, glob expansion, or shell-style word splitting.
 
-### 3.5 Duplicate keys and properties
+### 3.5 Duplicate Keys and Properties
 
 A scalar key may appear only once.
 
@@ -148,11 +148,11 @@ Duplicate assignments and conflicting IDs are fatal configuration errors rather 
 
 ---
 
-## 4. Keys and object families
+## 4. Keys and Object Families
 
 QMX uses two forms of key.
 
-### 4.1 Scalar or singleton family
+### 4.1 Scalar or Singleton Family
 
 ```text
 memory = 384M
@@ -164,7 +164,7 @@ bios = "firmware/bios.bin"
 
 The value is mapped to the corresponding QEMU configuration family.
 
-### 4.2 Named repeated object
+### 4.2 Named Repeated Object
 
 ```text
 drive.system = file="system.qcow2",format=qcow2,if=none
@@ -192,7 +192,7 @@ The implementation must not silently rename duplicate object IDs.
 
 ---
 
-## 5. QEMU value coverage
+## 5. QEMU Value Coverage
 
 QMX is QEMU-native. For mapped parameter families, QMX should pass values to QEMU's existing parsers/configuration objects wherever practical rather than maintaining an independent whitelist.
 
@@ -231,7 +231,7 @@ The same rule applies to memory, accelerator, machine, display, VGA, firmware, a
 
 ---
 
-## 6. Relative paths
+## 6. Relative Paths
 
 Every relative filesystem path originating in a QMX setting must be resolved relative to the directory containing the QMX file, never relative to QEMU's process working directory.
 
@@ -265,7 +265,7 @@ Path-valued properties must be identified by the semantic adapter for the releva
 
 ---
 
-## 7. Conversion model
+## 7. Conversion Model
 
 QMX is intentionally close to a simple intermediate representation.
 
@@ -301,7 +301,7 @@ QMX itself must not construct or execute shell command text internally. The QEMU
 
 ---
 
-## 8. Persistent legacy CMOS state
+## 8. Persistent Legacy CMOS State
 
 Persistent legacy BIOS state is separate from the QMX configuration language.
 
@@ -333,7 +333,7 @@ BIOS firmware must not rewrite the QMX file.
 
 ---
 
-## 9. Media failure policy
+## 9. Media Failure Policy
 
 Media declared through QMX uses tolerant startup behavior by default.
 
@@ -364,43 +364,7 @@ Configuration errors remain fatal, including malformed QMX, duplicate keys, inva
 
 ---
 
-## 10. Windows 98 acceptance fixture
-
-The following QMX is a required initial acceptance case, not a set of defaults:
-
-```text
-qmx = 1
-name = "Windows 98 SE"
-
-machine = pc,acpi=off
-memory = 384M
-accel = kvm
-cpu = pentium3
-display = sdl
-vga = cirrus
-
-# Optional firmware override. Relative paths resolve from this QMX file.
-# bios = "bios.bin"
-
-audiodev.snd0 = sdl
-device.sound = sb16,audiodev=snd0
-
-boot = menu=on,order=ca
-
-drive.win98hdd = file="windows98se.qcow2",format=qcow2,if=none
-device.hdd = ide-hd,drive=win98hdd,bus=ide.0,unit=0
-
-drive.win98cd = file="Windows98_SE.iso",format=raw,media=cdrom,if=none,readonly=on
-device.cdrom = ide-cd,drive=win98cd,bus=ide.1,unit=0
-
-nvram = file="machine.cmos",format=cmos128,rtc_init=time0
-```
-
-This must represent the semantic equivalent of the corresponding QEMU CLI settings. Other valid values supported by the running QEMU build for these mapped families are not restricted to the values shown here.
-
----
-
-## 11. Versioning
+## 10. Versioning
 
 QMX files declare their major format version as a normal scalar assignment:
 
@@ -416,9 +380,9 @@ The specification document may advance through draft revisions without changing 
 
 ---
 
-## 12. Non-goals
+## 11. Non-Goals
 
-QMX v0.2 does not attempt to:
+QMX does not attempt to:
 
 - be a Bochs configuration file;
 - provide universal configuration compatibility across emulators;
@@ -426,6 +390,6 @@ QMX v0.2 does not attempt to:
 - replace libvirt or Proxmox;
 - store mutable BIOS state directly in the QMX file;
 - redefine QEMU device-model validation;
-- impose Windows 98 test-fixture values as defaults.
+- impose example test-fixture values as defaults.
 
 The 128-byte CMOS backing layout remains intentionally simple and interoperable, but that binary-state compatibility is independent of the QMX configuration grammar.
