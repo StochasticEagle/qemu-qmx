@@ -1,0 +1,13 @@
+qmx = 1
+name = "Example virtual machine"
+description = "QEMU QMX Builder example"
+
+machine = q35
+accel = kvm
+cpu = host
+memory = 4G
+smp = 2
+display = gtk
+
+drive.system = file=./system.qcow2,format=qcow2,if=none
+device.system = virtio-blk-pci,drive=system

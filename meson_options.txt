@@ -63,6 +63,8 @@ option('guest_agent_msi', type : 'feature', value : 'auto',
        description: 'Build MSI package for the QEMU Guest Agent')
 option('tools', type : 'feature', value : 'auto',
        description: 'build support utilities that come with QEMU')
+option('qmx_builder', type : 'feature', value : 'auto',
+       description: 'QEMU QMX graphical configuration builder (requires Qt 6.5 or newer)')
 option('qga_vss', type : 'feature', value: 'auto',
        description: 'build QGA VSS support (broken with MinGW)')
 

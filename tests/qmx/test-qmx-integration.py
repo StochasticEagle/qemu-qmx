@@ -71,6 +71,19 @@ def launch(args: list[str], cwd: pathlib.Path) -> tuple[str, str]:
             proc.wait(timeout=5)
 
 
+def check(
+    qmx: pathlib.Path, cwd: pathlib.Path, *extra: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(QEMU), "-qmx-check", str(qmx), *extra],
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
 def test_missing_media(root: pathlib.Path) -> None:
     case = root / "missing-media"
     case.mkdir()
@@ -132,6 +145,70 @@ nvram = file="state/machine.cmos",format=cmos128,rtc_init=time0
             raise AssertionError(f"relative-paths: expected QMX-relative path {path}")
     if (run / "state" / "machine.cmos").exists():
         raise AssertionError("relative-paths: NVRAM was incorrectly created relative to cwd")
+
+
+def test_fat_directory(root: pathlib.Path) -> None:
+    case = root / "fat-directory"
+    run = root / "fat-different-cwd"
+    (case / "shared").mkdir(parents=True)
+    run.mkdir()
+    (case / "shared" / "marker.txt").write_text("QMX", encoding="utf-8")
+    qmx = case / "machine.qmx"
+    write_qmx(qmx, "drive.shared = file=fat:rw:./shared,format=raw,if=none\n")
+
+    launch(["-qmx", str(qmx)], run)
+
+
+def test_firmware_paths(root: pathlib.Path) -> None:
+    case = root / "firmware-paths"
+    system = root / "system-firmware"
+    run = root / "firmware-cwd"
+    case.mkdir()
+    system.mkdir()
+    run.mkdir()
+    (system / "system-code.fd").write_bytes(b"system firmware")
+    (case / "local-code.fd").write_bytes(b"local firmware")
+    (run / "cwd-only.fd").write_bytes(b"must not be selected")
+
+    searched = case / "searched.qmx"
+    write_qmx(
+        searched,
+        "drive.code = if=pflash,format=raw,readonly=on,file=system-code.fd\n"
+        "L.system = ./../system-firmware\n",
+    )
+    result = check(searched, run)
+    if result.returncode != 0:
+        raise AssertionError(f"firmware search path was not used\n{result.stderr}")
+
+    local = case / "local.qmx"
+    write_qmx(
+        local,
+        "drive.code = if=pflash,format=raw,readonly=on,file=./local-code.fd\n",
+    )
+    result = check(local, run)
+    if result.returncode != 0:
+        raise AssertionError(f"explicit QMX-local firmware was not used\n{result.stderr}")
+
+    cwd_only = case / "cwd-only.qmx"
+    write_qmx(
+        cwd_only,
+        "drive.code = if=pflash,format=raw,readonly=on,file=cwd-only.fd\n",
+    )
+    result = check(cwd_only, run)
+    if result.returncode == 0 or "firmware search path" not in result.stderr:
+        raise AssertionError(
+            "bare firmware name was incorrectly resolved from the process cwd\n"
+            + result.stderr
+        )
+
+    missing = case / "missing.qmx"
+    write_qmx(
+        missing,
+        "drive.code = if=pflash,format=raw,readonly=on,file=missing-code.fd\n",
+    )
+    result = check(missing, run)
+    if result.returncode == 0 or "firmware search path" not in result.stderr:
+        raise AssertionError(f"missing system firmware was not rejected\n{result.stderr}")
 
 
 def test_cli_precedence(root: pathlib.Path) -> None:
@@ -211,6 +288,8 @@ def main() -> int:
         root = pathlib.Path(tmp)
         test_missing_media(root)
         test_relative_paths(root)
+        test_fat_directory(root)
+        test_firmware_paths(root)
         test_cli_precedence(root)
         test_rtc_image(root)
         test_bare_and_explicit(root)

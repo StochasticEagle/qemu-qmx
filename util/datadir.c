@@ -30,30 +30,25 @@
 static const char *data_dir[16];
 static int data_dir_idx;
 
-char *qemu_find_file(QemuFileType type, const char *name)
+static char *qemu_find_file_in_data_dirs_internal(QemuFileType type,
+                                                  const char *name)
 {
     int i;
     const char *subdir;
     char *buf;
 
-    /* Try the name as a straight path first */
-    if (access(name, R_OK) == 0) {
-        trace_load_file(name, name);
-        return g_strdup(name);
-    }
-
     switch (type) {
-    case QEMU_FILE_TYPE_BIOS:
-        subdir = "";
-        break;
-    case QEMU_FILE_TYPE_DTB:
-        subdir = "dtb/";
-        break;
-    case QEMU_FILE_TYPE_KEYMAP:
-        subdir = "keymaps/";
-        break;
-    default:
-        abort();
+        case QEMU_FILE_TYPE_BIOS:
+            subdir = "";
+            break;
+        case QEMU_FILE_TYPE_DTB:
+            subdir = "dtb/";
+            break;
+        case QEMU_FILE_TYPE_KEYMAP:
+            subdir = "keymaps/";
+            break;
+        default:
+            abort();
     }
 
     for (i = 0; i < data_dir_idx; i++) {
@@ -64,7 +59,24 @@ char *qemu_find_file(QemuFileType type, const char *name)
         }
         g_free(buf);
     }
+
     return NULL;
+}
+
+char *qemu_find_file_in_data_dirs(QemuFileType type, const char *name)
+{
+    return qemu_find_file_in_data_dirs_internal(type, name);
+}
+
+char *qemu_find_file(QemuFileType type, const char *name)
+{
+    /* Try the name as a straight path first */
+    if (access(name, R_OK) == 0) {
+        trace_load_file(name, name);
+        return g_strdup(name);
+    }
+
+    return qemu_find_file_in_data_dirs_internal(type, name);
 }
 
 void qemu_add_data_dir(char *path)

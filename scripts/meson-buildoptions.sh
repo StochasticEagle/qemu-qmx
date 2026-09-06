@@ -175,6 +175,8 @@ meson_options_help() {
   printf "%s\n" '  qed             qed image format support'
   printf "%s\n" '  qemu-vnc        standalone VNC server over D-Bus'
   printf "%s\n" '  qga-vss         build QGA VSS support (broken with MinGW)'
+  printf "%s\n" '  qmx-builder     QEMU QMX graphical configuration builder (requires Qt 6.5'
+  printf "%s\n" '                  or newer)'
   printf "%s\n" '  qpl             Query Processing Library support'
   printf "%s\n" '  rbd             Ceph block device driver'
   printf "%s\n" '  rdma            Enable RDMA-based migration'
@@ -460,6 +462,8 @@ _meson_option_parse() {
     --disable-qemu-vnc) printf "%s" -Dqemu_vnc=disabled ;;
     --enable-qga-vss) printf "%s" -Dqga_vss=enabled ;;
     --disable-qga-vss) printf "%s" -Dqga_vss=disabled ;;
+    --enable-qmx-builder) printf "%s" -Dqmx_builder=enabled ;;
+    --disable-qmx-builder) printf "%s" -Dqmx_builder=disabled ;;
     --enable-qom-cast-debug) printf "%s" -Dqom_cast_debug=true ;;
     --disable-qom-cast-debug) printf "%s" -Dqom_cast_debug=false ;;
     --enable-qpl) printf "%s" -Dqpl=enabled ;;

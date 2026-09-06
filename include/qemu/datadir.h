@@ -30,4 +30,6 @@ void qemu_add_default_firmwarepath(void);
 void qemu_add_data_dir(char *path);
 void qemu_list_data_dirs(void);
 
+char *qemu_find_file_in_data_dirs(QemuFileType type, const char *name);
+
 #endif

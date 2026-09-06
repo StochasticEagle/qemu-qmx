@@ -82,8 +82,9 @@ python = import('python').find_installation()
 
 cc = meson.get_compiler('c')
 all_languages = ['c']
-enable_cpp = host_os == 'windows' or get_option('plugins')
-if enable_cpp and add_languages('cpp', required: false, native: false)
+enable_cpp = host_os == 'windows' or get_option('plugins') or \
+             get_option('qmx_builder').allowed()
+if enable_cpp and add_languages('cpp', required: get_option('qmx_builder'), native: false)
   all_languages += ['cpp']
   cxx = meson.get_compiler('cpp')
 endif
@@ -4901,6 +4902,7 @@ if vnc.found()
   summary_info += {'VNC JPEG support':  jpeg}
 endif
 summary_info += {'VNC D-Bus server (qemu-vnc)': have_qemu_vnc}
+summary_info += {'QMX Builder':        qmx_builder_enabled}
 summary_info += {'spice protocol support': spice_protocol}
 if spice_protocol.found()
   summary_info += {'  spice server support': spice}

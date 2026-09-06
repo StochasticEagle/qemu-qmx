@@ -13,6 +13,7 @@ test-qmx-integration.py.
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -136,21 +137,78 @@ drive.disk = file="does-not-need-to-open.img",format=raw,if=none
     )
 
     expect_check_ok(
-        "extended families",
+        "generic valued parameters and switches",
         '''\
 qmx = 1
-description = "Extended family validation"
+description = "Generic parameter validation"
 netdev.net0 = user
 chardev.console = null
 object.mem0 = memory-backend-ram,size=1M
+tpmdev.tpm0 = emulator,chardev=console
+numa.node0 = node,nodeid=0
 serial = none
 parallel = none
 monitor = none
 smp = 2
 rtc = base=utc
 usb = off
+mem-prealloc = on
+nodefaults = on
+no-reboot = off
+uuid = 11111111-2222-3333-4444-555555555555
+        ''',
+    )
+
+    expect_ok(
+        "TPM object ID translation",
+        '''\
+qmx = 1
+chardev.swtpm = null
+tpmdev.tpm0 = emulator,chardev=swtpm
 ''',
     )
+
+    # Every option spelling and arity comes from the same generated source as
+    # QEMU's command line. Exercise that contract without maintaining a second
+    # option list in this test.
+    generated = QEMU.resolve().parent / "qemu-options.def"
+    config = QEMU.resolve().parent / "config-host.h"
+    with tempfile.TemporaryDirectory(prefix="qmx-options-") as tmp:
+        wrapper = pathlib.Path(tmp) / "options.c"
+        wrapper.write_text(
+            f'''\
+#include "{config}"
+#define HAS_ARG 1
+#define DEF(option, opt_arg, opt_enum, opt_help, arch_mask) \
+    QMX_OPTION option opt_arg
+#define DEFHEADING(text)
+#define ARCHHEADING(text, arch_mask)
+#include "{generated}"
+''',
+            encoding="utf-8",
+        )
+        preprocessed = subprocess.run(
+            ["cc", "-E", "-P", "-x", "c", str(wrapper)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout
+    definitions = dict(
+        re.findall(r'QMX_OPTION\s+"([^"]+)"\s+(1|0)', preprocessed)
+    )
+    if not definitions:
+        raise AssertionError("could not read generated QEMU option definitions")
+    all_options = ["qmx = 1"]
+    for option, arity in sorted(definitions.items()):
+        if option == "m":
+            continue
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", option):
+            raise AssertionError(
+                f"QEMU option cannot be represented as a QMX key: {option}"
+            )
+        all_options.append(f"{option} = {'value' if arity == '1' else 'off'}")
+    expect_check_ok("all generated QEMU option names", "\n".join(all_options) + "\n")
 
     expect_check_ok(
         "same-id object CLI overrides",
@@ -241,7 +299,7 @@ name = "bad\\qescape"
 qmx = 1
 not_a_qmx_family = value
 ''',
-        "unsupported QMX directive",
+        "QEMU parameter 'not_a_qmx_family' is not supported by this build",
     )
 
     expect_check_fail(
@@ -251,6 +309,24 @@ qmx = 1
 usb = maybe
 ''',
         "usb must be 'on' or 'off'",
+    )
+
+    expect_check_fail(
+        "command-line memory abbreviation",
+        '''\
+qmx = 1
+m = 64M
+''',
+        "QMX uses 'memory'",
+    )
+
+    expect_check_fail(
+        "argumentless occurrence name",
+        '''\
+qmx = 1
+nodefaults.first = on
+''',
+        "argumentless QEMU parameter 'nodefaults' cannot have an occurrence identifier",
     )
 
     expect_fail(

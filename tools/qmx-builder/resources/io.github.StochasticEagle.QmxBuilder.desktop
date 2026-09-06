@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=QEMU QMX Builder
+Comment=Create and edit QEMU QMX virtual-machine configurations
+Exec=qmx-builder %f
+Icon=qemu
+Terminal=false
+Categories=System;Emulator;
+MimeType=application/x-qmx;
